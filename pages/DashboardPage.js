@@ -1,0 +1,229 @@
+/**
+ * Page Object del panel empresa P2L (CompanyDashboardView).
+ * Selectores alineados con la UI real: títulos accesibles, placeholders y roles.
+ */
+
+const { expect } = require('@playwright/test');
+const { safeClick, safeFill, waitVisible } = require('../utils/helpers');
+const { DASHBOARD_PATH, PLAN_HINT_PATTERNS } = require('../utils/testData');
+
+class DashboardPage {
+  /**
+   * @param {import('@playwright/test').Page} page
+   */
+  constructor(page) {
+    this.page = page;
+    /** @type {string | null} Último nombre comercial usado al crear empresa */
+    this._lastCompanyName = null;
+  }
+
+  /** Abre la URL de dashboard tenant (puede redirigir a login si no hay sesión). */
+  async open() {
+    await this.page.goto(DASHBOARD_PATH, { waitUntil: 'domcontentloaded' });
+  }
+
+  /**
+   * Login con Google (Google Identity Services: iframe + popup típico de accounts.google.com).
+   * Si PLAYWRIGHT_SKIP_GOOGLE_UI=1 y ya hay storageState en config, solo espera salir del login.
+   *
+   * @param {string} email
+   * @param {string} password
+   */
+  async loginWithGoogle(email, password) {
+    const skipUi = process.env.PLAYWRIGHT_SKIP_GOOGLE_UI === '1';
+    if (skipUi) {
+      await this.waitDashboardLoaded();
+      return;
+    }
+
+    const loginHeading = this.page.getByRole('heading', { name: /Inicia sesión con Google/i });
+    await loginHeading.waitFor({ state: 'visible', timeout: 45_000 }).catch(() => {
+      // Ya autenticado o otra vista
+    });
+
+    if (!(await loginHeading.isVisible().catch(() => false))) {
+      await this.waitDashboardLoaded();
+      return;
+    }
+
+    const iframeSel = '#google-signin-button iframe';
+    await this.page.locator(iframeSel).first().waitFor({ state: 'attached', timeout: 45_000 });
+
+    const popupPromise = this.page.waitForEvent('popup', { timeout: 15_000 }).catch(() => null);
+
+    const frame = this.page.frameLocator(iframeSel).first();
+    const innerBtn = frame.locator('div[role="button"], button').first();
+    await safeClick(innerBtn);
+
+    let authPage = await popupPromise;
+    if (!authPage) {
+      // A veces Google usa nueva pestaña o mismo documento (menos frecuente con GIS).
+      const ctx = this.page.context();
+      await new Promise((r) => setTimeout(r, 800));
+      const pages = ctx.pages();
+      authPage = pages.find((p) => p !== this.page && /google/i.test(p.url())) || null;
+    }
+
+    if (!authPage) {
+      throw new Error(
+        'No se abrió ventana emergente de Google. Usa PLAYWRIGHT_STORAGE_STATE con sesión guardada o ejecuta en local con test:headed.'
+      );
+    }
+
+    await authPage.waitForLoadState('domcontentloaded');
+
+    const emailInput = authPage.locator('input#identifierId, input[type="email"]').first();
+    await waitVisible(emailInput);
+    await safeFill(emailInput, email);
+
+    const nextAfterEmail = authPage.getByRole('button', { name: /Siguiente|Next/i }).first();
+    await safeClick(nextAfterEmail);
+
+    const pwd = authPage.locator('input[type="password"], input[name="Passwd"]').first();
+    await waitVisible(pwd, { state: 'visible' });
+    await safeFill(pwd, password);
+
+    const nextAfterPwd = authPage
+      .getByRole('button', { name: /Siguiente|Next|Aceptar|Continue/i })
+      .first();
+    await safeClick(nextAfterPwd);
+
+    // Posibles pasos extra (2FA, confirmación): el tester debe usar cuenta sin bloqueos o storageState.
+    await authPage.waitForEvent('close', { timeout: 120_000 }).catch(() => {});
+
+    await this.page.waitForLoadState('networkidle', { timeout: 60_000 }).catch(() => {});
+    await this.waitDashboardLoaded();
+  }
+
+  /** Espera a que desaparezca "Cargando…" y aparezca onboarding o dashboard con empresa. */
+  async waitDashboardLoaded() {
+    const loading = this.page.getByText('Cargando…');
+    await loading.waitFor({ state: 'hidden', timeout: 60_000 }).catch(() => {});
+
+    const createCompany = this.page.getByRole('heading', { name: 'Crear empresa' });
+    const empresaHeader = this.page.getByRole('heading', { name: /Empresa · P2L/i });
+    const planes = this.page.getByRole('button', { name: /Planes/i });
+
+    await expect
+      .poll(
+        async () => {
+          if (await createCompany.isVisible().catch(() => false)) return 'create';
+          if (await empresaHeader.isVisible().catch(() => false)) return 'dash';
+          if (await planes.isVisible().catch(() => false)) return 'dash';
+          return 'unknown';
+        },
+        { timeout: 60_000, intervals: [500, 1000, 2000] }
+      )
+      .not.toBe('unknown');
+  }
+
+  /**
+   * Si aparece el formulario de primera empresa, lo completa y guarda.
+   * Nota: el formulario real no incluye ciudad ni tipo; se reflejan en el nombre comercial para trazabilidad QA.
+   *
+   * @param {{ name: string; phone: string; cityLine?: string; businessType?: string; adminEmail: string }} data
+   */
+  async createCompanyIfNeeded(data) {
+    const heading = this.page.getByRole('heading', { name: 'Crear empresa' });
+    const visible = await heading.isVisible().catch(() => false);
+    if (!visible) {
+      return false;
+    }
+
+    const commercialName = data.cityLine
+      ? `${data.name} — ${data.cityLine} — ${data.businessType || 'Transporte'}`
+      : data.name;
+
+    this._lastCompanyName = commercialName;
+
+    const createCard = this.page
+      .locator('section.company-dash__card')
+      .filter({ has: this.page.getByRole('heading', { name: 'Crear empresa' }) });
+
+    await safeFill(createCard.getByPlaceholder('Nombre comercial'), commercialName);
+    await safeFill(createCard.locator('input.inp').nth(1), data.phone);
+    await safeFill(createCard.locator('input.inp').nth(2), 'QA Admin Onboarding');
+    await safeFill(createCard.locator('input[type="email"]').first(), data.adminEmail);
+
+    await safeClick(createCard.getByRole('button', { name: /Crear empresa/i }));
+    await this.page.getByText('Creando…').waitFor({ state: 'hidden', timeout: 60_000 }).catch(() => {});
+
+    await this.waitDashboardLoaded();
+    return true;
+  }
+
+  /**
+   * Devuelve fragmentos de texto relacionados al plan (tarjeta "Plan actual" o metadatos).
+   */
+  async getCurrentPlanText() {
+    const parts = [];
+
+    const trialTitle = this.page.locator('.trial-current-card__title');
+    if (await trialTitle.isVisible().catch(() => false)) {
+      parts.push((await trialTitle.innerText()).trim());
+    }
+
+    const trialBanner = this.page.locator('.banner--trial');
+    if (await trialBanner.isVisible().catch(() => false)) {
+      parts.push((await trialBanner.innerText()).trim());
+    }
+
+    const starterTier = this.page.getByText(/PLAN STARTER/i).first();
+    if (await starterTier.isVisible().catch(() => false)) {
+      parts.push((await starterTier.innerText()).trim());
+    }
+
+    const planMeta = this.page.getByText(/Plan actual:/i).first();
+    if (await planMeta.isVisible().catch(() => false)) {
+      parts.push((await planMeta.innerText()).trim());
+    }
+
+    const body = await this.page.locator('body').innerText();
+    parts.push(body);
+
+    return parts.join('\n---\n');
+  }
+
+  /** Confirma que el texto del plan contiene alguno de los indicadores flexibles. */
+  async expectFlexibleFreeOrStarterPlan() {
+    const blob = await this.getCurrentPlanText();
+    const ok = PLAN_HINT_PATTERNS.some((re) => re.test(blob));
+    expect(ok, `Texto de plan no reconocido. Fragmento:\n${blob.slice(0, 1200)}`).toBeTruthy();
+  }
+
+  /**
+   * Obtiene el nombre comercial mostrado (acordeón "Datos de empresa" o variable interna).
+   */
+  async getCompanyName() {
+    if (this._lastCompanyName) {
+      await expect(this.page.getByText(this._lastCompanyName, { exact: false }).first()).toBeVisible({
+        timeout: 30_000,
+      });
+      return this._lastCompanyName;
+    }
+
+    const summary = this.page.getByRole('button', { name: /Datos de empresa/i });
+    if (await summary.isVisible().catch(() => false)) {
+      await safeClick(summary);
+      const h2 = this.page.locator('.company-dash__card--inside-accordion h2').first();
+      await waitVisible(h2);
+      return (await h2.innerText()).trim();
+    }
+
+    const hero = this.page.getByRole('heading', { level: 2 }).first();
+    return (await hero.innerText()).trim();
+  }
+
+  /**
+   * Captura de pantalla con nombre descriptivo bajo test-results/.
+   * @param {string} name
+   */
+  async takeScreenshot(name) {
+    const fs = require('fs');
+    const safe = String(name).replace(/[^\w.-]+/g, '_');
+    fs.mkdirSync('test-results', { recursive: true });
+    await this.page.screenshot({ path: `test-results/${safe}.png`, fullPage: true });
+  }
+}
+
+module.exports = { DashboardPage };

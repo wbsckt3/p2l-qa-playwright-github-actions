@@ -1,0 +1,11 @@
+node_modules/
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+.env
+*.log
+.DS_Store
+# Estado de sesión local (no subir credenciales reales)
+playwright/.auth/*.json
+!playwright/.auth/.gitkeep
