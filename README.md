@@ -23,7 +23,7 @@ Resultados: pestaña **Actions** del repositorio y artefactos (informe HTML y `t
 
 ## Configuración en GitHub (obligatoria para que corran los tests)
 
-En el repositorio remoto: **Settings → Secrets and variables → Actions**, cree al menos:
+En el repositorio remoto: **Settings → Secrets and variables → Actions →  Repository secrets**, cree al menos:
 
 | Secreto | Descripción |
 |---------|-------------|
