@@ -17,7 +17,7 @@ on:
 
 jobs:
   generate-storage-state:
-    if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'generate-storage-state'
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'generate-storage-state')
     runs-on: ubuntu-latest
 
     steps:
