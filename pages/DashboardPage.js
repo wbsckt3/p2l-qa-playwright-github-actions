@@ -49,24 +49,87 @@ class DashboardPage {
     const iframeSel = '#google-signin-button iframe';
     await this.page.locator(iframeSel).first().waitFor({ state: 'attached', timeout: 45_000 });
 
-    const popupPromise = this.page.waitForEvent('popup', { timeout: 15_000 }).catch(() => null);
+    const ctx = this.page.context();
+    const googleAuthUrl = (u) =>
+      /accounts\.google\.com|google\.com\/o\/oauth2|signin\.google/i.test(u || '');
+
+    // En CI a veces no hay "popup": GIS abre una Page nueva en el mismo contexto.
+    // Registrar ambas esperas *antes* del clic (patrón recomendado por Playwright).
+    const popupWait = this.page.waitForEvent('popup', { timeout: 55_000 }).catch(() => null);
+    const newPageWait = ctx
+      .waitForEvent('page', { timeout: 55_000 })
+      .then(async (p) => {
+        if (!p || p === this.page) return null;
+        try {
+          await p.waitForURL(/accounts\.google\.com|google\.com\/o\/oauth2/i, { timeout: 45_000 });
+        } catch {
+          return null;
+        }
+        return googleAuthUrl(p.url()) ? p : null;
+      })
+      .catch(() => null);
 
     const frame = this.page.frameLocator(iframeSel).first();
     const innerBtn = frame.locator('div[role="button"], button').first();
     await safeClick(innerBtn);
 
-    let authPage = await popupPromise;
+    // No usar Promise.race simple: si una rama resuelve null antes, la otra (popup real) seguiría pendiente.
+    const firstNonNullPage = (promises, ms = 56_000) =>
+      new Promise((resolve) => {
+        let finished = false;
+        let pending = promises.length;
+        const timer = setTimeout(() => {
+          if (!finished) {
+            finished = true;
+            resolve(null);
+          }
+        }, ms);
+        const doneOne = () => {
+          if (finished) return;
+          pending -= 1;
+          if (pending <= 0) {
+            finished = true;
+            clearTimeout(timer);
+            resolve(null);
+          }
+        };
+        for (const pr of promises) {
+          Promise.resolve(pr)
+            .then((pg) => {
+              if (finished) return;
+              if (pg) {
+                finished = true;
+                clearTimeout(timer);
+                resolve(pg);
+                return;
+              }
+              doneOne();
+            })
+            .catch(() => doneOne());
+        }
+      });
+
+    let authPage = await firstNonNullPage([popupWait, newPageWait]);
+
     if (!authPage) {
-      // A veces Google usa nueva pestaña o mismo documento (menos frecuente con GIS).
-      const ctx = this.page.context();
-      await new Promise((r) => setTimeout(r, 800));
-      const pages = ctx.pages();
-      authPage = pages.find((p) => p !== this.page && /google/i.test(p.url())) || null;
+      const deadline = Date.now() + 20_000;
+      while (Date.now() < deadline) {
+        const hit = ctx
+          .pages()
+          .find((p) => p !== this.page && googleAuthUrl(p.url()));
+        if (hit) {
+          authPage = hit;
+          break;
+        }
+        await new Promise((r) => setTimeout(r, 350));
+      }
     }
 
     if (!authPage) {
       throw new Error(
-        'No se abrió ventana emergente de Google. Usa PLAYWRIGHT_STORAGE_STATE con sesión guardada o ejecuta en local con test:headed.'
+        'No apareció ventana de autenticación de Google (popup o pestaña). En GitHub Actions esto es habitual: ' +
+          'añada el secreto PLAYWRIGHT_STORAGE_B64 (JSON de storageState en base64) y el workflow restaurará la sesión; ' +
+          'o ejecute en local con npm run test:headed.'
       );
     }
 

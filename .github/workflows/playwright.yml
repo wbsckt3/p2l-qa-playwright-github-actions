@@ -23,7 +23,26 @@ jobs:
 
       - run: npx playwright install --with-deps
 
-      - run: npx playwright test
+      # Sesión ya logueada (recomendado en CI): generar el JSON en una máquina con Playwright y:
+      #   base64 -w0 playwright/.auth/p2l-admin.json   (Linux / Git Bash)
+      # Subir el resultado como secreto PLAYWRIGHT_STORAGE_B64 en el repo.
+      - name: Restaurar sesión Playwright (opcional)
+        env:
+          STORAGE_B64: ${{ secrets.PLAYWRIGHT_STORAGE_B64 }}
+        run: |
+          if [ -z "$STORAGE_B64" ]; then
+            echo "Sin PLAYWRIGHT_STORAGE_B64: se intentará login por UI (a menudo falla en Actions por Google)."
+            exit 0
+          fi
+          mkdir -p playwright/.auth
+          echo "$STORAGE_B64" | base64 -d > playwright/.auth/ci-state.json
+          test -s playwright/.auth/ci-state.json
+          echo "PLAYWRIGHT_STORAGE_STATE=playwright/.auth/ci-state.json" >> "$GITHUB_ENV"
+          echo "PLAYWRIGHT_SKIP_GOOGLE_UI=1" >> "$GITHUB_ENV"
+
+      # PLAYWRIGHT_STORAGE_STATE / PLAYWRIGHT_SKIP_GOOGLE_UI llegan del paso anterior vía GITHUB_ENV.
+      - name: Ejecutar Playwright
+        run: npx playwright test
         env:
           ADMIN_EMAIL: ${{ secrets.ADMIN_EMAIL }}
           ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}

@@ -28,24 +28,57 @@ En el repositorio remoto: **Settings → Secrets and variables → Actions →  
 | Secreto | Descripción |
 |---------|-------------|
 | `ADMIN_EMAIL` | Cuenta Google de QA |
-| `ADMIN_PASSWORD` | Contraseña (flujo popup; ver nota Google más abajo) |
+| `ADMIN_PASSWORD` | Contraseña (solo si se usa login por UI; en CI suele fallar) |
+| `PLAYWRIGHT_STORAGE_B64` | **Recomendado en CI:** JSON de `storageState` en **una sola línea base64** (ver abajo). Si existe, el workflow omite el clic en Google. |
 
-Opcionalmente puede añadir pasos al workflow para inyectar `PLAYWRIGHT_STORAGE_STATE` (sesión guardada) y `PLAYWRIGHT_SKIP_GOOGLE_UI=1` si Google bloquea el login automatizado en CI.
+## Login de Google en CI (por qué falla el popup)
 
-## Login de Google en CI
+En **GitHub Actions** el widget de Google muchas veces **no abre** popup/pestaña detectable, o **bloquea** navegadores automatizados. Por eso el error *“No apareció ventana de autenticación…”* es esperable solo con email/contraseña en secretos.
 
-Google a menudo **dificulta** el login automatizado (captcha, dispositivo no reconocido, 2FA). Este repo contempla:
+**Solución estable:** guardar una sesión ya autenticada y subirla como secreto.
 
-1. **UI completa** (por defecto): iframe oficial → popup `accounts.google.com` → email y contraseña desde secretos.
-2. **`storageState`**: sesión generada fuera de este repo bloqueado (por ejemplo en una máquina personal o pipeline distinto), guardada de forma segura e inyectada en Actions; ver comentarios en `.env.example`.
+### Generar `PLAYWRIGHT_STORAGE_B64` (en un PC donde sí pueda ejecutar Playwright)
+
+1. Tras `npm install` y `npx playwright install`, inicie sesión manualmente y guarde el estado, por ejemplo:
+
+   ```bash
+   npx playwright codegen https://www.refactorii.com/p2l-tenant/dashboard --save-storage=playwright/.auth/p2l-admin.json
+   ```
+
+   Complete el login con Google en el navegador que abra Playwright y cierre guardando el archivo.
+
+2. Codifique el JSON en base64 **en una línea** (Linux / Git Bash en el repo):
+
+   ```bash
+   base64 -w0 playwright/.auth/p2l-admin.json
+   ```
+
+   En **PowerShell**:
+
+   ```powershell
+   [Convert]::ToBase64String([IO.File]::ReadAllBytes("playwright\.auth\p2l-admin.json"))
+   ```
+
+3. En GitHub: **Settings → Secrets and variables → Actions → New repository secret**  
+   Nombre: `PLAYWRIGHT_STORAGE_B64`  
+   Valor: pegue la cadena base64 completa.
+
+4. Haga **push** de nuevo; el workflow decodifica el archivo, define `PLAYWRIGHT_STORAGE_STATE` y `PLAYWRIGHT_SKIP_GOOGLE_UI=1`, y las pruebas arrancan ya logueadas.
+
+Renueve el secreto cuando caduque la sesión (p. ej. token Google ~1 h de validez en app; según uso puede durar más en storage según cookies).
+
+### Sin `PLAYWRIGHT_STORAGE_B64`
+
+Se intentará login por UI con `ADMIN_EMAIL` / `ADMIN_PASSWORD`; puede funcionar en local con `npm run test:headed`, pero **no confíe** en ello en Actions.
 
 ## Variables de entorno (referencia)
 
 | Variable | Uso |
 |----------|-----|
 | `ADMIN_EMAIL` / `ADMIN_PASSWORD` | Secretos en GitHub Actions |
-| `PLAYWRIGHT_STORAGE_STATE` | Ruta al JSON de sesión (si se implementa en el workflow) |
-| `PLAYWRIGHT_SKIP_GOOGLE_UI` | `1` para omitir el clic en Google si hay sesión restaurada |
+| `PLAYWRIGHT_STORAGE_B64` | Secreto del repo; el workflow escribe `playwright/.auth/ci-state.json` |
+| `PLAYWRIGHT_STORAGE_STATE` | Local o CI vía GITHUB_ENV: ruta al JSON de sesión |
+| `PLAYWRIGHT_SKIP_GOOGLE_UI` | `1` omite el clic en Google (lo pone el workflow si hay storage) |
 | `CI` | Lo define GitHub Actions (`headless: true` en `playwright.config.js`) |
 
 ## Ejecución local (solo si su entorno lo permite)
