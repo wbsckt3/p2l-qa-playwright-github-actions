@@ -23,6 +23,30 @@ class DashboardPage {
   }
 
   /**
+   * Localiza el input de contraseña en la página de Google (incluye iframes).
+   * @param {import('@playwright/test').Page} authPage
+   * @param {number} timeoutMs
+   * @returns {Promise<import('@playwright/test').Locator>}
+   */
+  async _waitGooglePasswordLocator(authPage, timeoutMs) {
+    const sel =
+      'input[type="password"], input[name="Passwd"], input[name="password"], ' +
+      'input[autocomplete="current-password"], input#password';
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      const frames = authPage.frames();
+      for (const frame of frames) {
+        const loc = frame.locator(sel).first();
+        if (await loc.isVisible().catch(() => false)) return loc;
+      }
+      await new Promise((r) => setTimeout(r, 450));
+    }
+    throw new Error(
+      'Google no mostró el campo de contraseña a tiempo. Revise captcha/2FA o use PLAYWRIGHT_STORAGE_B64 en CI.'
+    );
+  }
+
+  /**
    * Login con Google (Google Identity Services: iframe + popup típico de accounts.google.com).
    * Si PLAYWRIGHT_SKIP_GOOGLE_UI=1 y ya hay storageState en config, solo espera salir del login.
    *
@@ -136,15 +160,28 @@ class DashboardPage {
     await authPage.waitForLoadState('domcontentloaded');
 
     const emailInput = authPage.locator('input#identifierId, input[type="email"]').first();
-    await waitVisible(emailInput);
+    await waitVisible(emailInput, { timeout: 45_000 });
     await safeFill(emailInput, email);
 
     const nextAfterEmail = authPage.getByRole('button', { name: /Siguiente|Next/i }).first();
     await safeClick(nextAfterEmail);
 
-    const pwd = authPage.locator('input[type="password"], input[name="Passwd"]').first();
-    await waitVisible(pwd, { state: 'visible' });
-    await safeFill(pwd, password);
+    await authPage.waitForLoadState('networkidle', { timeout: 20_000 }).catch(() => {});
+
+    // Selector de cuenta si Google muestra el grid en lugar de ir directo a contraseña.
+    const accountPick = authPage
+      .locator(`[data-identifier="${email}"], [data-email="${email}"]`)
+      .first();
+    if (await accountPick.isVisible({ timeout: 5000 }).catch(() => false)) {
+      await accountPick.click();
+      await authPage.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => {});
+    }
+
+    // La contraseña a veces está en un iframe (anti-phishing) o con distintos name/autocomplete.
+    const pwd = await this._waitGooglePasswordLocator(authPage, 65_000);
+    await waitVisible(pwd, { timeout: 65_000 });
+    await pwd.fill('');
+    await pwd.fill(password);
 
     const nextAfterPwd = authPage
       .getByRole('button', { name: /Siguiente|Next|Aceptar|Continue/i })

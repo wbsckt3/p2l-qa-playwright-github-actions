@@ -25,11 +25,12 @@ async function safeFill(locator, text) {
 /**
  * Espera explícita a visible (o attached si se indica).
  * @param {import('@playwright/test').Locator} locator
- * @param {{ state?: 'visible'|'attached' }} [opts]
+ * @param {{ state?: 'visible'|'attached'; timeout?: number }} [opts]
  */
 async function waitVisible(locator, opts = {}) {
   const state = opts.state || 'visible';
-  await locator.waitFor({ state });
+  const timeout = opts.timeout;
+  await locator.waitFor({ state, ...(timeout != null ? { timeout } : {}) });
 }
 
 /**

@@ -12,6 +12,8 @@ Repositorio **independiente** para pruebas end-to-end del panel empresa P2L en *
 
 En el push, el workflow instala Node 20, las dependencias del `package.json`, los binarios de Playwright y **lanza las pruebas en Ubuntu en la nube**. No hace falta instalar Playwright ni npm en la máquina del tester.
 
+**Sin el secreto `PLAYWRIGHT_STORAGE_B64`**, el escenario principal de dashboard se **omite** en CI (queda en *skipped*), porque el login Google por email/contraseña en el runner no es fiable. Con el secreto configurado, el workflow restaura la sesión y el test **sí** se ejecuta.
+
 Resultados: pestaña **Actions** del repositorio y artefactos (informe HTML y `test-results/`).
 
 ## Qué valida
@@ -21,15 +23,20 @@ Resultados: pestaña **Actions** del repositorio y artefactos (informe HTML y `t
 - **Onboarding**: formulario “Crear empresa” en primer ingreso (nombre comercial, teléfono, responsable, correo).
 - **Plan inicial** de forma flexible: textos como trial, Starter, FREE, $0 COP, etc.
 
-## Configuración en GitHub (obligatoria para que corran los tests)
+## Configuración en GitHub (secretos)
 
-En el repositorio remoto: **Settings → Secrets and variables → Actions →  Repository secrets**, cree al menos:
+Los nombres deben coincidir **exactamente** con los que usa `.github/workflows/playwright.yml` (mayúsculas incluidas).
 
-| Secreto | Descripción |
-|---------|-------------|
-| `ADMIN_EMAIL` | Cuenta Google de QA |
-| `ADMIN_PASSWORD` | Contraseña (solo si se usa login por UI; en CI suele fallar) |
-| `PLAYWRIGHT_STORAGE_B64` | **Recomendado en CI:** JSON de `storageState` en **una sola línea base64** (ver abajo). Si existe, el workflow omite el clic en Google. |
+1. Abra el repo en GitHub → **Settings** → **Secrets and variables** → **Actions**.
+2. **New repository secret** y cree cada fila de la tabla (si faltan `ADMIN_EMAIL` o `ADMIN_PASSWORD`, el workflow igual corre pero el test falla o no puede autenticarse).
+
+| Secreto | Obligatorio | Descripción |
+|---------|-------------|-------------|
+| `ADMIN_EMAIL` | Sí | Correo completo de la cuenta Google de QA (mismo que en login real). También se usa al rellenar el formulario “Correo responsable”. |
+| `ADMIN_PASSWORD` | Sí* | Contraseña de esa cuenta Google. *En CI el login por UI suele fallar; con `PLAYWRIGHT_STORAGE_B64` no se usa para abrir Google, pero el spec puede seguir leyendo la variable — conviene definirla igualmente. |
+| `PLAYWRIGHT_STORAGE_B64` | Muy recomendado en CI | JSON de sesión Playwright en base64 (una línea). Sin él, en CI el test de dashboard se **omite** (*skipped*). |
+
+**Comprobación:** en **Actions** → el último workflow → job **test** → paso **Ejecutar Playwright**, las variables `ADMIN_EMAIL` y `ADMIN_PASSWORD` llegan desde esos secretos. Si no existen, GitHub las deja vacías y el test no tiene credenciales válidas.
 
 ## Login de Google en CI (por qué falla el popup)
 

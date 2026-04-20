@@ -19,6 +19,8 @@ module.exports = {
   timeout: 90_000,
   expect: { timeout: 15_000 },
   retries: 1,
+  // Un solo worker en CI evita dos logins Google concurrentes y ruido en artifacts.
+  workers: process.env.CI ? 1 : undefined,
   reporter: [['html', { open: 'never', outputFolder: 'playwright-report' }]],
   use: {
     baseURL: 'https://www.refactorii.com',
