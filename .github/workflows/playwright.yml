@@ -1,5 +1,7 @@
 name: Playwright QA
 
+name: Playwright QA Pro
+
 on:
   workflow_dispatch:
     inputs:
@@ -11,42 +13,57 @@ on:
         options:
           - test
           - generate-storage-state
+
   push:
     branches: [main]
+
   pull_request:
 
+concurrency:
+  group: playwright-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
+
+  # ==========================================================
+  # GENERAR STORAGE STATE (MANUAL ONLY)
+  # ==========================================================
   generate-storage-state:
-    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'generate-storage-state')
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'generate-storage-state'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: npm
 
-      - run: npm install --no-audit --no-fund
+      - name: Install deps
+        run: npm install --no-audit --no-fund
 
-      - run: npx playwright install --with-deps
+      - name: Install Playwright Browsers
+        run: npx playwright install --with-deps chromium
 
-      - name: Generar storageState.json (login UI Google)
+      - name: Generate storageState.json
         run: node scripts/generateStorageState.js
         env:
           ADMIN_EMAIL: ${{ secrets.ADMIN_EMAIL }}
           ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
-          CI: true
-          PLAYWRIGHT_SKIP_GOOGLE_UI: 0
           STORAGE_STATE_OUTPUT: storageState.json
+          CI: true
 
-      - name: Generar PLAYWRIGHT_STORAGE_B64.txt
+      - name: Encode Base64
         run: |
           test -s storageState.json
-          cat storageState.json | base64 -w0 > PLAYWRIGHT_STORAGE_B64.txt
+          base64 -w0 storageState.json > PLAYWRIGHT_STORAGE_B64.txt
           test -s PLAYWRIGHT_STORAGE_B64.txt
 
-      - name: Subir artifact con storage state
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: playwright-storage-state
@@ -54,56 +71,87 @@ jobs:
             storageState.json
             PLAYWRIGHT_STORAGE_B64.txt
 
+
+  # ==========================================================
+  # TESTS
+  # ==========================================================
   test:
-    if: github.event_name != 'workflow_dispatch' || github.event.inputs.action != 'generate-storage-state'
+    if: github.event_name == 'push' || github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'test')
+
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium]
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: npm
 
-      # npm ci exige package-lock.json; en equipos sin npm local se versiona solo package.json.
-      # Cuando exista lockfile en el repo, puede cambiarse a npm ci para instalación reproducible.
-      - run: npm install --no-audit --no-fund
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
 
-      - run: npx playwright install --with-deps
+      - name: Install Playwright
+        run: npx playwright install --with-deps ${{ matrix.browser }}
 
-      # Sesión ya logueada (recomendado en CI): generar el JSON en una máquina con Playwright y:
-      #   base64 -w0 playwright/.auth/p2l-admin.json   (Linux / Git Bash)
-      # Subir el resultado como secreto PLAYWRIGHT_STORAGE_B64 en el repo.
-      - name: Restaurar sesión Playwright (opcional)
+      # ==========================================
+      # RESTORE AUTH SESSION
+      # ==========================================
+      - name: Restore storage state
         env:
           STORAGE_B64: ${{ secrets.PLAYWRIGHT_STORAGE_B64 }}
         run: |
-          if [ -z "$STORAGE_B64" ]; then
-            echo "Sin PLAYWRIGHT_STORAGE_B64: se intentará login por UI (a menudo falla en Actions por Google)."
-            exit 0
-          fi
           mkdir -p playwright/.auth
-          echo "$STORAGE_B64" | base64 -d > playwright/.auth/ci-state.json
-          test -s playwright/.auth/ci-state.json
-          echo "PLAYWRIGHT_STORAGE_STATE=playwright/.auth/ci-state.json" >> "$GITHUB_ENV"
-          echo "PLAYWRIGHT_SKIP_GOOGLE_UI=1" >> "$GITHUB_ENV"
 
-      # PLAYWRIGHT_STORAGE_STATE / PLAYWRIGHT_SKIP_GOOGLE_UI llegan del paso anterior vía GITHUB_ENV.
-      - name: Ejecutar Playwright
-        run: npx playwright test
+          if [ -n "$STORAGE_B64" ]; then
+            echo "$STORAGE_B64" | base64 -d > playwright/.auth/ci-state.json
+            test -s playwright/.auth/ci-state.json
+            echo "PLAYWRIGHT_STORAGE_STATE=playwright/.auth/ci-state.json" >> $GITHUB_ENV
+            echo "PLAYWRIGHT_SKIP_GOOGLE_UI=1" >> $GITHUB_ENV
+            echo "Storage restored OK"
+          else
+            echo "No PLAYWRIGHT_STORAGE_B64 found"
+          fi
+
+      # ==========================================
+      # RUN TESTS
+      # ==========================================
+      - name: Run Playwright tests
+        run: npx playwright test --project=${{ matrix.browser }}
         env:
           ADMIN_EMAIL: ${{ secrets.ADMIN_EMAIL }}
           ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
           CI: true
 
-      - uses: actions/upload-artifact@v4
+      # ==========================================
+      # REPORTS
+      # ==========================================
+      - name: Upload Playwright HTML Report
         if: always()
+        uses: actions/upload-artifact@v4
         with:
-          name: playwright-report
+          name: playwright-report-${{ matrix.browser }}
           path: playwright-report/
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload Results / Videos / Screenshots
         if: always()
+        uses: actions/upload-artifact@v4
         with:
-          name: test-results
+          name: test-results-${{ matrix.browser }}
           path: test-results/
+
+      # ==========================================
+      # OPTIONAL FAILURE SUMMARY
+      # ==========================================
+      - name: Failure summary
+        if: failure()
+        run: |
+          echo "Playwright tests failed on browser: ${{ matrix.browser }}"
