@@ -13,18 +13,33 @@ if (storageEnv) {
   }
 }
 
+const isCI = !!process.env.CI;
+/** Forzar Chromium empaquetado (p. ej. si no hay Chrome instalado). */
+const useBundledChromium = process.env.PLAYWRIGHT_USE_CHROMIUM === '1';
+
+/**
+ * En local, Google suele bloquear el login en el Chromium de Playwright ("browser may not be secure").
+ * Mejor usar el Google Chrome instalado (channel: 'chrome') y suavizar flags de automatización.
+ */
+const localChrome = {
+  channel: 'chrome',
+  launchOptions: {
+    args: ['--disable-blink-features=AutomationControlled'],
+    ignoreDefaultArgs: ['--enable-automation'],
+  },
+};
+
 /** @type {import('@playwright/test').PlaywrightTestConfig} */
 module.exports = {
   testDir: './tests',
   timeout: 90_000,
   expect: { timeout: 15_000 },
   retries: 1,
-  // Un solo worker en CI evita dos logins Google concurrentes y ruido en artifacts.
-  workers: process.env.CI ? 1 : undefined,
+  workers: isCI ? 1 : undefined,
   reporter: [['html', { open: 'never', outputFolder: 'playwright-report' }]],
   use: {
     baseURL: 'https://www.refactorii.com',
-    headless: !!process.env.CI,
+    headless: isCI,
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
     trace: 'retain-on-failure',
@@ -32,5 +47,13 @@ module.exports = {
     navigationTimeout: 60_000,
     ...(storageState ? { storageState } : {}),
   },
-  projects: [{ name: 'chromium', use: { browserName: 'chromium' } }],
+  projects: [
+    {
+      name: isCI || useBundledChromium ? 'chromium' : 'chrome',
+      use:
+        isCI || useBundledChromium
+          ? { browserName: 'chromium' }
+          : localChrome,
+    },
+  ],
 };

@@ -48,6 +48,20 @@ Con navegador visible (recomendado para login Google):
 npm run test:headed
 ```
 
+### Si Google dice *“This browser or app may not be secure”*
+
+Eso aparece cuando Google detecta **automatización** en el Chromium empaquetado de Playwright.
+
+Este repo, en **local**, intenta abrir **Google Chrome instalado** (`channel: 'chrome'`) y quita señales típicas de bot (`AutomationControlled`, `--enable-automation`). Requisito: tener **Chrome estable** instalado en Windows.
+
+Si no puede usar Chrome y debe usar solo el Chromium de Playwright, ponga en `.env`:
+
+```env
+PLAYWRIGHT_USE_CHROMIUM=1
+```
+
+(suele volver a chocar con el bloqueo de Google; lo ideal es Chrome real + cuenta de prueba sin restricciones fuertes.)
+
 Modo estándar:
 
 ```bash
