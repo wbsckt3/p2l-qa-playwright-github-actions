@@ -44,6 +44,23 @@ En **GitHub Actions** el widget de Google muchas veces **no abre** popup/pestañ
 
 **Solución estable:** guardar una sesión ya autenticada y subirla como secreto.
 
+### Opción sin entorno local (todo en GitHub Actions)
+
+El workflow soporta una ejecución manual para intentar generar el estado desde GitHub:
+
+1. **Actions** → workflow **Playwright QA** → **Run workflow**.
+2. En `action`, elija **`generate-storage-state`**.
+3. Al finalizar, descargue el artifact `playwright-storage-state`.
+4. Copie el contenido de `PLAYWRIGHT_STORAGE_B64.txt` y guárdelo como secret `PLAYWRIGHT_STORAGE_B64`.
+
+Este job ejecuta internamente:
+
+```bash
+cat storageState.json | base64 -w0 > PLAYWRIGHT_STORAGE_B64.txt
+```
+
+Nota: sigue dependiendo de que Google permita el login automatizado en el runner.
+
 ### Generar `PLAYWRIGHT_STORAGE_B64` (en un PC donde sí pueda ejecutar Playwright)
 
 1. Tras `npm install` y `npx playwright install`, inicie sesión manualmente y guarde el estado, por ejemplo:

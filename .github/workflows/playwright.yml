@@ -2,12 +2,60 @@ name: Playwright QA
 
 on:
   workflow_dispatch:
+    inputs:
+      action:
+        description: "Acción a ejecutar"
+        required: true
+        default: "test"
+        type: choice
+        options:
+          - test
+          - generate-storage-state
   push:
     branches: [main]
   pull_request:
 
 jobs:
+  generate-storage-state:
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'generate-storage-state'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - run: npm install --no-audit --no-fund
+
+      - run: npx playwright install --with-deps
+
+      - name: Generar storageState.json (login UI Google)
+        run: node scripts/generateStorageState.js
+        env:
+          ADMIN_EMAIL: ${{ secrets.ADMIN_EMAIL }}
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+          CI: true
+          PLAYWRIGHT_SKIP_GOOGLE_UI: 0
+          STORAGE_STATE_OUTPUT: storageState.json
+
+      - name: Generar PLAYWRIGHT_STORAGE_B64.txt
+        run: |
+          test -s storageState.json
+          cat storageState.json | base64 -w0 > PLAYWRIGHT_STORAGE_B64.txt
+          test -s PLAYWRIGHT_STORAGE_B64.txt
+
+      - name: Subir artifact con storage state
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-storage-state
+          path: |
+            storageState.json
+            PLAYWRIGHT_STORAGE_B64.txt
+
   test:
+    if: github.event_name != 'workflow_dispatch' || github.event.inputs.action != 'generate-storage-state'
     runs-on: ubuntu-latest
 
     steps:
