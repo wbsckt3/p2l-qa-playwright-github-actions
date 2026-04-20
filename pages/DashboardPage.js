@@ -19,7 +19,10 @@ class DashboardPage {
 
   /** Abre la URL de dashboard tenant (puede redirigir a login si no hay sesión). */
   async open() {
-    await this.page.goto(DASHBOARD_PATH, { waitUntil: 'domcontentloaded' });
+    const isAbsolute = /^https?:\/\//i.test(DASHBOARD_PATH);
+    const base = process.env.P2L_BASE_URL || 'https://www.refactorii.com';
+    const target = isAbsolute ? DASHBOARD_PATH : new URL(DASHBOARD_PATH, base).toString();
+    await this.page.goto(target, { waitUntil: 'domcontentloaded' });
   }
 
   /**
