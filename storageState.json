@@ -1,0 +1,67 @@
+{
+  "cookies": [
+    {
+      "name": "g_state",
+      "value": "{\"i_l\":0,\"i_ll\":1776799594378,\"i_b\":\"boh6TukDEeo6kWjhBdsTWFdA7ZFhshK7QNiBHv1FkSM\",\"i_e\":{\"enable_itp_optimization\":0},\"i_et\":1776799582568}",
+      "domain": "www.refactorii.com",
+      "path": "/",
+      "expires": 1792351594,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "__Host-GAPS",
+      "value": "1:yhhaS_pmDKaHz9zm3vldZOKFzToF-Q:AJ1m3xBQz6LzZ7qt",
+      "domain": "accounts.google.com",
+      "path": "/",
+      "expires": 1811359595.219283,
+      "httpOnly": true,
+      "secure": true,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "OTZ",
+      "value": "8574927_76_76__76_",
+      "domain": "accounts.google.com",
+      "path": "/",
+      "expires": 1779391599,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "NID",
+      "value": "530=sLkZOQWJWHuU_OXXy62ObNBNU_CQbSe-x81zwB2ggNYQ06UgDGL6TLCGyO2gTk4-J1KCbzicBxH2jaOHKNKvfRB9xse0mf8Wd3uHDjPCl85W6Lke_rjKvV6rCkyJ7s6IRO1VdWUWih53xStOJcNhGtvCUmxGYFG3Yh5Wu8vM3H0i2ch_tTULm4Scy3HBl77iok25nz9tDunHizfg",
+      "domain": ".google.com",
+      "path": "/",
+      "expires": 1792610798.582974,
+      "httpOnly": true,
+      "secure": true,
+      "sameSite": "None"
+    }
+  ],
+  "origins": [
+    {
+      "origin": "https://www.refactorii.com",
+      "localStorage": [
+        {
+          "name": "p2l_app_context_list",
+          "value": "[\"refactorii\",\"uber-like\"]"
+        },
+        {
+          "name": "p2l_tenant_id",
+          "value": "p2l-unidades"
+        },
+        {
+          "name": "realDB",
+          "value": "{\"user\":null,\"proposals\":[],\"damages\":[],\"companies\":[],\"technicians\":[],\"sessions\":[],\"lastSync\":null}"
+        },
+        {
+          "name": "p2l_app_context",
+          "value": "refactorii"
+        }
+      ]
+    }
+  ]
+}
