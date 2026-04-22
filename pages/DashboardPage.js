@@ -1,6 +1,6 @@
 /**
  * Page Object del panel empresa P2L (CompanyDashboardView).
- * Selectores alineados con la UI real: títulos accesibles, placeholders y roles.
+ * Selectores: roles, placeholders, testId; CSS mínimo solo donde la app no expone otra vía.
  */
 
 const { expect } = require('@playwright/test');
@@ -8,14 +8,207 @@ const { safeClick, safeFill, waitVisible } = require('../utils/helpers');
 const { attachPageConsoleBuffer, captureCIFailure, shouldRunDiagnostics } = require('../utils/ciDebug');
 const { DASHBOARD_PATH, PLAN_HINT_PATTERNS } = require('../utils/testData');
 
+const T = {
+  SHORT: 5_000,
+  MEDIUM: 15_000,
+  LONG: 45_000,
+  XL: 60_000,
+  RETRY: 40_000,
+};
+
+const googleHostRe = (u) => /accounts\.google\.com|google\.com\/o\/oauth2|signin\.google/i.test(u || '');
+
 class DashboardPage {
   /**
    * @param {import('@playwright/test').Page} page
    */
   constructor(page) {
     this.page = page;
-    /** @type {string | null} Último nombre comercial usado al crear empresa */
+    /** @type {string | null} */
     this._lastCompanyName = null;
+  }
+
+  /**
+   * @param {{ onLogin: boolean; bodySignalMatch: boolean; signal?: string }} meta
+   */
+  async _captureDebugState(meta) {
+    if (!shouldRunDiagnostics()) return;
+    return captureCIFailure(this.page, 'dashboard-wait', meta);
+  }
+
+  _locatorRoleDashboard() {
+    return this.page
+      .getByRole('heading', { name: 'Crear empresa' })
+      .or(this.page.getByRole('heading', { name: /Empresa · P2L/i }))
+      .or(this.page.getByRole('button', { name: /Planes/i }))
+      .or(this.page.getByRole('button', { name: /Cerrar sesión/i }))
+      .or(this.page.getByRole('button', { name: /Ir a Unidades/i }));
+  }
+
+  async _bodyTextMatchesP2lDashboard() {
+    if (await this._isGoogleLoginUIRendered()) {
+      return false;
+    }
+    const raw = (await this.page.locator('body').innerText().catch(() => '')) || '';
+    const t = raw.toLowerCase();
+    if (
+      /(crear\s+empresa|mi\s+empresa|empresa\s*·\s*p2l|unidades|plan actual|datos de empresa|ir\s+a\s+unidades|cerrar\s*sesi[oó]n)/i.test(
+        t
+      )
+    ) {
+      return true;
+    }
+    if (/(planes|dashboard)/i.test(t) && /(empresa|p2l|refactorii|tenant)/i.test(t)) {
+      return true;
+    }
+    return false;
+  }
+
+  _pathnameTenantDashboard() {
+    try {
+      const p = new URL(this.page.url()).pathname;
+      return /p2l-tenant/i.test(p) && /dashboard/i.test(p);
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Señal “URL”: ruta tenant; la SPA a veces muestra login en la misma ruta, por eso se combina con otras señales.
+   */
+  async _signalUrlWithShell() {
+    if (await this._isGoogleLoginUIRendered()) {
+      return false;
+    }
+    if (!this._pathnameTenantDashboard()) {
+      return false;
+    }
+    const u = this.page.url();
+    if (!/refactorii\.com/i.test(u) && !/localhost/i.test(u)) {
+      return false;
+    }
+    const structure = await this._internalDashboardStructureVisible(T.MEDIUM);
+    const body = await this._bodyTextMatchesP2lDashboard();
+    return structure || body;
+  }
+
+  async _internalDashboardStructureVisible(timeout = T.MEDIUM) {
+    const shell = this.page
+      .locator(
+        'details.company-accordion__item--company, section.company-dash__card, .company-dash__card--inside-accordion'
+      )
+      .first();
+    if (await shell.isVisible({ timeout }).catch(() => false)) {
+      return true;
+    }
+    return this.page
+      .getByText(/datos de empresa/i)
+      .first()
+      .isVisible({ timeout: T.SHORT })
+      .catch(() => false);
+  }
+
+  async _isGoogleLoginUIRendered() {
+    const loginHeading = this.page.getByRole('heading', { name: /Inicia sesión con Google/i });
+    const googleBtn = this.page.locator('#google-signin-button');
+    return (
+      (await loginHeading.isVisible().catch(() => false)) && (await googleBtn.isVisible().catch(() => false))
+    );
+  }
+
+  /**
+   * Ya hay sesión en el panel (evita clics GIS). Umbral de rol acotado a MEDIUM.
+   * @returns {Promise<boolean>}
+   */
+  async _isSessionAlreadyInDashboard() {
+    return (await this._detectDashboardSignals(T.MEDIUM)) !== 'none';
+  }
+
+  /**
+   * A/B/C/D: rol → cuerpo → (URL+shell) → estructura interna.
+   * @returns {Promise<'role' | 'body' | 'url' | 'internal' | 'none'>}
+   */
+  async _detectDashboardSignals(roleFirstTimeout = T.LONG) {
+    if (await this._isGoogleLoginUIRendered()) {
+      return 'none';
+    }
+    if (await this._locatorRoleDashboard().isVisible({ timeout: roleFirstTimeout }).catch(() => false)) {
+      return 'role';
+    }
+    if (await this._bodyTextMatchesP2lDashboard()) {
+      return 'body';
+    }
+    if (await this._signalUrlWithShell()) {
+      return 'url';
+    }
+    if (await this._internalDashboardStructureVisible(T.LONG)) {
+      return 'internal';
+    }
+    return 'none';
+  }
+
+  async _waitForDashboardShell() {
+    await this.page.waitForLoadState('domcontentloaded');
+    await this.page.waitForLoadState('networkidle', { timeout: T.MEDIUM }).catch(() => {});
+    await this.page.getByText('Cargando…').waitFor({ state: 'hidden', timeout: T.XL }).catch(() => {});
+  }
+
+  /**
+   * Resuelve popup o pestaña de Google; listeners registrados *antes* del clic.
+   * @param {ReadonlyArray<Promise<import('@playwright/test').Page | null | undefined>>} pagePromises
+   */
+  async _waitForFirstGoogleAuthPage(pagePromises, budgetMs) {
+    return new Promise((resolve) => {
+      let finished = false;
+      let pending = pagePromises.length;
+      const ms = budgetMs != null ? budgetMs : T.LONG + 11_000;
+      const timer = setTimeout(() => {
+        if (!finished) {
+          finished = true;
+          resolve(null);
+        }
+      }, ms);
+      const doneOne = () => {
+        if (finished) return;
+        pending -= 1;
+        if (pending <= 0) {
+          finished = true;
+          clearTimeout(timer);
+          resolve(null);
+        }
+      };
+      for (const pr of pagePromises) {
+        Promise.resolve(pr)
+          .then((pg) => {
+            if (finished) return;
+            if (pg) {
+              finished = true;
+              clearTimeout(timer);
+              resolve(pg);
+            } else {
+              doneOne();
+            }
+          })
+          .catch(() => doneOne());
+      }
+    });
+  }
+
+  /**
+   * @param {import('@playwright/test').Page} fromPage
+   * @param {import('@playwright/test').BrowserContext} ctx
+   * @returns {Promise<import('@playwright/test').Page | null>}
+   */
+  async _pollForGoogleAuthPage(fromPage, ctx) {
+    const deadline = Date.now() + 20_000;
+    while (Date.now() < deadline) {
+      const hit = ctx.pages().find((p) => p !== fromPage && googleHostRe(p.url()));
+      if (hit) {
+        return hit;
+      }
+      await new Promise((r) => setTimeout(r, 350));
+    }
+    return null;
   }
 
   /** Abre la URL de dashboard tenant (puede redirigir a login si no hay sesión). */
@@ -28,7 +221,6 @@ class DashboardPage {
   }
 
   /**
-   * Localiza el input de contraseña en la página de Google (incluye iframes).
    * @param {import('@playwright/test').Page} authPage
    * @param {number} timeoutMs
    * @returns {Promise<import('@playwright/test').Locator>}
@@ -47,428 +239,246 @@ class DashboardPage {
       await new Promise((r) => setTimeout(r, 450));
     }
     throw new Error(
-      'Google no mostró el campo de contraseña a tiempo. Revise captcha/2FA o use PLAYWRIGHT_STORAGE_B64 en CI.'
+      'Google no mostró el campo de contraseña. Revise captcha/2FA o use PLAYWRIGHT_STORAGE_B64 en CI; ver test-results/ci-debug si falla en Actions.'
     );
   }
 
   /**
-   * Login con Google (Google Identity Services: iframe + popup típico de accounts.google.com).
-   * Si PLAYWRIGHT_SKIP_GOOGLE_UI=1 y ya hay storageState en config, solo espera salir del login.
-   *
-   * @param {string} email
-   * @param {string} password
+   * Con storageState (PLAYWRIGHT_SKIP_GOOGLE_UI) o sesión ya en panel, no abre el flujo GIS.
+   * Sesión reutilizable: `PLAYWRIGHT_STORAGE_STATE` en playwright.config.
    */
   async loginWithGoogle(email, password) {
-    const skipUi = process.env.PLAYWRIGHT_SKIP_GOOGLE_UI === '1';
-    if (skipUi) {
+    if (process.env.PLAYWRIGHT_SKIP_GOOGLE_UI === '1') {
       await this.waitDashboardLoaded();
       return;
     }
 
-    const loginHeading = this.page.getByRole('heading', { name: /Inicia sesión con Google/i });
-    await loginHeading.waitFor({ state: 'visible', timeout: 45_000 }).catch(() => {
-      // Ya autenticado o otra vista
-    });
+    await this._waitForDashboardShell();
+    if (await this._isSessionAlreadyInDashboard()) {
+      return;
+    }
 
+    const loginHeading = this.page.getByRole('heading', { name: /Inicia sesión con Google/i });
+    await loginHeading.waitFor({ state: 'visible', timeout: T.LONG }).catch(() => {});
     if (!(await loginHeading.isVisible().catch(() => false))) {
       await this.waitDashboardLoaded();
       return;
     }
 
     const iframeSel = '#google-signin-button iframe';
-    await this.page.locator(iframeSel).first().waitFor({ state: 'attached', timeout: 45_000 });
+    await this.page.locator(iframeSel).first().waitFor({ state: 'attached', timeout: T.LONG });
 
     const ctx = this.page.context();
-    const googleAuthUrl = (u) =>
-      /accounts\.google\.com|google\.com\/o\/oauth2|signin\.google/i.test(u || '');
-
-    // En CI a veces no hay "popup": GIS abre una Page nueva en el mismo contexto.
-    // Registrar ambas esperas *antes* del clic (patrón recomendado por Playwright).
-    const popupWait = this.page.waitForEvent('popup', { timeout: 55_000 }).catch(() => null);
+    const popupWait = this.page.waitForEvent('popup', { timeout: T.LONG + 10_000 }).catch(() => null);
     const newPageWait = ctx
-      .waitForEvent('page', { timeout: 55_000 })
+      .waitForEvent('page', { timeout: T.LONG + 10_000 })
       .then(async (p) => {
         if (!p || p === this.page) return null;
         try {
-          await p.waitForURL(/accounts\.google\.com|google\.com\/o\/oauth2/i, { timeout: 45_000 });
+          await p.waitForURL(/accounts\.google\.com|google\.com\/o\/oauth2/i, { timeout: T.LONG });
         } catch {
           return null;
         }
-        return googleAuthUrl(p.url()) ? p : null;
+        return googleHostRe(p.url()) ? p : null;
       })
       .catch(() => null);
 
     const frame = this.page.frameLocator(iframeSel).first();
-    const innerBtn = frame.locator('div[role="button"], button').first();
-    await safeClick(innerBtn, { timeout: 45_000 });
+    const innerBtn = frame.getByRole('button').or(frame.locator('div[role="button"]')).first();
+    await safeClick(innerBtn, { timeout: T.LONG });
 
-    // No usar Promise.race simple: si una rama resuelve null antes, la otra (popup real) seguiría pendiente.
-    const firstNonNullPage = (promises, ms = 56_000) =>
-      new Promise((resolve) => {
-        let finished = false;
-        let pending = promises.length;
-        const timer = setTimeout(() => {
-          if (!finished) {
-            finished = true;
-            resolve(null);
-          }
-        }, ms);
-        const doneOne = () => {
-          if (finished) return;
-          pending -= 1;
-          if (pending <= 0) {
-            finished = true;
-            clearTimeout(timer);
-            resolve(null);
-          }
-        };
-        for (const pr of promises) {
-          Promise.resolve(pr)
-            .then((pg) => {
-              if (finished) return;
-              if (pg) {
-                finished = true;
-                clearTimeout(timer);
-                resolve(pg);
-                return;
-              }
-              doneOne();
-            })
-            .catch(() => doneOne());
-        }
-      });
-
-    let authPage = await firstNonNullPage([popupWait, newPageWait]);
-
+    let authPage = await this._waitForFirstGoogleAuthPage([popupWait, newPageWait], T.LONG + 11_000);
     if (!authPage) {
-      const deadline = Date.now() + 20_000;
-      while (Date.now() < deadline) {
-        const hit = ctx
-          .pages()
-          .find((p) => p !== this.page && googleAuthUrl(p.url()));
-        if (hit) {
-          authPage = hit;
-          break;
-        }
-        await new Promise((r) => setTimeout(r, 350));
-      }
+      authPage = await this._pollForGoogleAuthPage(this.page, ctx);
     }
-
     if (!authPage) {
       throw new Error(
-        'No apareció ventana de autenticación de Google (popup o pestaña). En GitHub Actions esto es habitual: ' +
-          'añada el secreto PLAYWRIGHT_STORAGE_B64 (JSON de storageState en base64) y el workflow restaurará la sesión; ' +
-          'o ejecute en local con npm run test:headed.'
+        'No apareció autenticación de Google (popup o pestaña). En Actions use el secreto PLAYWRIGHT_STORAGE_B64 (ver README) o pruebe local: npm run test:headed.'
       );
     }
 
-    await authPage.waitForLoadState('domcontentloaded');
+    try {
+      await authPage.waitForLoadState('domcontentloaded');
+      const emailInput = authPage.locator('input#identifierId, input[type="email"]').first();
+      await waitVisible(emailInput, { timeout: T.LONG });
+      await safeFill(emailInput, email, { timeout: T.LONG });
+      await safeClick(authPage.getByRole('button', { name: /Siguiente|Next/i }).first(), { timeout: T.LONG });
+      await authPage.waitForLoadState('networkidle', { timeout: T.MEDIUM }).catch(() => {});
 
-    const emailInput = authPage.locator('input#identifierId, input[type="email"]').first();
-    await waitVisible(emailInput, { timeout: 45_000 });
-    await safeFill(emailInput, email);
+      const accountPick = authPage
+        .locator(`[data-identifier="${email}"], [data-email="${email}"]`)
+        .first();
+      if (await accountPick.isVisible({ timeout: T.SHORT }).catch(() => false)) {
+        await accountPick.click();
+        await authPage.waitForLoadState('networkidle', { timeout: T.MEDIUM }).catch(() => {});
+      }
 
-    const nextAfterEmail = authPage.getByRole('button', { name: /Siguiente|Next/i }).first();
-    await safeClick(nextAfterEmail);
-
-    await authPage.waitForLoadState('networkidle', { timeout: 20_000 }).catch(() => {});
-
-    // Selector de cuenta si Google muestra el grid en lugar de ir directo a contraseña.
-    const accountPick = authPage
-      .locator(`[data-identifier="${email}"], [data-email="${email}"]`)
-      .first();
-    if (await accountPick.isVisible({ timeout: 5000 }).catch(() => false)) {
-      await accountPick.click();
-      await authPage.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => {});
+      const pwd = await this._waitGooglePasswordLocator(authPage, T.XL);
+      await waitVisible(pwd, { timeout: T.XL });
+      await pwd.fill('');
+      await pwd.fill(password);
+      await safeClick(
+        authPage.getByRole('button', { name: /Siguiente|Next|Aceptar|Continue/i }).first(),
+        { timeout: T.LONG }
+      );
+      await authPage.waitForEvent('close', { timeout: T.XL * 2 }).catch(() => {});
+    } catch (e) {
+      if (authPage && !authPage.isClosed()) {
+        await authPage.close().catch(() => {});
+      }
+      throw e instanceof Error ? e : new Error(String(e));
     }
 
-    // La contraseña a veces está en un iframe (anti-phishing) o con distintos name/autocomplete.
-    const pwd = await this._waitGooglePasswordLocator(authPage, 65_000);
-    await waitVisible(pwd, { timeout: 65_000 });
-    await pwd.fill('');
-    await pwd.fill(password);
-
-    const nextAfterPwd = authPage
-      .getByRole('button', { name: /Siguiente|Next|Aceptar|Continue/i })
-      .first();
-    await safeClick(nextAfterPwd);
-
-    // Posibles pasos extra (2FA, confirmación): el tester debe usar cuenta sin bloqueos o storageState.
-    await authPage.waitForEvent('close', { timeout: 120_000 }).catch(() => {});
-
+    await this.page.bringToFront();
     await this.page.waitForLoadState('domcontentloaded');
-    await this.page.waitForLoadState('networkidle', { timeout: 20_000 }).catch(() => {});
+    await this.page.waitForLoadState('networkidle', { timeout: T.MEDIUM }).catch(() => {});
     await this.waitDashboardLoaded();
   }
 
-  /** Carga mínima antes de comprobar señales del panel (no bloquea con networkidle largo en SPAs con sockets). */
-  async _waitForDashboardShell() {
-    await this.page.waitForLoadState('domcontentloaded');
-    await this.page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => {});
-    const loading = this.page.getByText('Cargando…');
-    await loading.waitFor({ state: 'hidden', timeout: 60_000 }).catch(() => {});
-  }
-
-  async _isGoogleLoginUIRendered() {
-    const loginHeading = this.page.getByRole('heading', { name: /Inicia sesión con Google/i });
-    const googleBtnContainer = this.page.locator('#google-signin-button');
-    return (
-      (await loginHeading.isVisible().catch(() => false)) &&
-      (await googleBtnContainer.isVisible().catch(() => false))
-    );
-  }
-
-  /** Respaldo por texto: evita depender solo de títulos/roles; no vale si aún se ve el login completo. */
-  async _bodyTextMatchesP2lDashboard() {
-    if (await this._isGoogleLoginUIRendered()) {
-      return false;
-    }
-    const raw = (await this.page.locator('body').innerText().catch(() => '')) || '';
-    const t = raw.toLowerCase();
-    const strong = /(crear\s+empresa|mi\s+empresa|empresa\s*·\s*p2l|unidades|plan actual|datos de empresa|ir\s+a\s+unidades|cerrar\s*sesi[oó]n)/i;
-    if (strong.test(t)) return true;
-    if (/(planes|dashboard)/i.test(t) && /(empresa|p2l|refactorii|tenant)/i.test(t)) {
-      return true;
-    }
-    return false;
-  }
-
-  _dashboardRoleLocator() {
-    const hCreate = this.page.getByRole('heading', { name: 'Crear empresa' });
-    const hEmp = this.page.getByRole('heading', { name: /Empresa · P2L/i });
-    const planes = this.page.getByRole('button', { name: /Planes/i });
-    const cerrar = this.page.getByRole('button', { name: /Cerrar sesión/i });
-    const unidades = this.page.getByRole('button', { name: /Ir a Unidades/i });
-    return hCreate.or(hEmp).or(planes).or(cerrar).or(unidades);
-  }
-
-  /** @param {number} roleTimeout */
-  async _assertDashboardWithFlexibleSignals(roleTimeout) {
-    const dashboardReady = this._dashboardRoleLocator();
-    try {
-      await expect(dashboardReady).toBeVisible({ timeout: roleTimeout });
-      return;
-    } catch (e) {
-      if (await this._isGoogleLoginUIRendered()) {
-        throw e;
-      }
-      if (await this._bodyTextMatchesP2lDashboard()) {
-        return;
-      }
-      throw e;
-    }
-  }
-
-  /** Espera a que aparezca onboarding o dashboard con empresa. */
   async waitDashboardLoaded() {
     await this._waitForDashboardShell();
 
-    let lastErr;
-    try {
-      await this._assertDashboardWithFlexibleSignals(50_000);
+    let lastSignal = await this._detectDashboardSignals(T.LONG);
+    if (lastSignal !== 'none') {
       return;
-    } catch (e) {
-      lastErr = e;
     }
 
     if (process.env.CI === 'true' || process.env.PLAYWRIGHT_SKIP_GOOGLE_UI === '1') {
       await this.page.reload({ waitUntil: 'domcontentloaded' });
       await this._waitForDashboardShell();
-      try {
-        await this._assertDashboardWithFlexibleSignals(40_000);
+      lastSignal = await this._detectDashboardSignals(T.RETRY);
+      if (lastSignal !== 'none') {
         return;
-      } catch (e2) {
-        lastErr = e2;
       }
     }
 
     const url = this.page.url();
-    if (process.env.CI === 'true' && process.env.PLAYWRIGHT_SKIP_GOOGLE_UI === '1' && (await this._isGoogleLoginUIRendered())) {
-      if (shouldRunDiagnostics()) {
-        await captureCIFailure(this.page, 'dashboard-wait', {
-          onLogin: true,
-          bodySignalMatch: await this._bodyTextMatchesP2lDashboard(),
-        });
-      }
-      throw new Error(
-        'CI restauró storageState pero la app sigue en login. URL actual: ' +
-          url +
-          ' El estado pudo expirar, no corresponde al tenant, o se generó con Chrome y CI usa Chromium. ' +
-          'Regenere con: $env:STORAGE_FOR_CI="1"; npm run storage:save (mismo motor que en Actions), luego base64 y secret PLAYWRIGHT_STORAGE_B64.'
-      );
-    }
-    if (await this._isGoogleLoginUIRendered()) {
-      if (shouldRunDiagnostics()) {
-        await captureCIFailure(this.page, 'dashboard-wait', {
-          onLogin: true,
-          bodySignalMatch: false,
-        });
-      }
-      throw new Error(
-        'La sesión no está en dashboard (sigue en login). URL: ' + url + ' Pruebe regenerar storage o test:headed.'
-      );
-    }
+    const bodyMatch = await this._bodyTextMatchesP2lDashboard();
+    const onLogin = await this._isGoogleLoginUIRendered();
+    const meta = {
+      onLogin,
+      bodySignalMatch: bodyMatch,
+      signal: String(lastSignal),
+    };
 
-    if (shouldRunDiagnostics()) {
-      await captureCIFailure(this.page, 'dashboard-wait', {
-        onLogin: false,
-        bodySignalMatch: await this._bodyTextMatchesP2lDashboard(),
-      });
+    if (process.env.CI === 'true' && process.env.PLAYWRIGHT_SKIP_GOOGLE_UI === '1' && onLogin) {
+      await this._captureDebugState(meta);
+      throw new Error(
+        'CI restauró storageState pero la app sigue en login. URL: ' +
+          url +
+          ' — Regenere con STORAGE_FOR_CI=1 y npm run storage:save, base64 a PLAYWRIGHT_STORAGE_B64.'
+      );
     }
+    if (onLogin) {
+      await this._captureDebugState(meta);
+      throw new Error('Sesión en login, no en panel. URL: ' + url);
+    }
+    await this._captureDebugState(meta);
     const bodySnippet = (await this.page.locator('body').innerText().catch(() => '')).slice(0, 800);
     throw new Error(
       'No se detectó el panel empresa a tiempo. URL: ' +
         url +
-        ' . Revise test-results/ci-debug y trace. Fragmento de página:\n' +
-        bodySnippet +
-        '\n---\n' +
-        (lastErr && lastErr.message ? String(lastErr.message) : '')
+        '\nVer test-results/ci-debug y trace.\n' +
+        bodySnippet
     );
   }
 
   /**
-   * Si aparece el formulario de primera empresa, lo completa y guarda.
-   * Nota: el formulario real no incluye ciudad ni tipo; se reflejan en el nombre comercial para trazabilidad QA.
-   *
    * @param {{ name: string; phone: string; cityLine?: string; businessType?: string; adminEmail: string }} data
    */
   async createCompanyIfNeeded(data) {
     const heading = this.page.getByRole('heading', { name: 'Crear empresa' });
-    const visible = await heading.isVisible().catch(() => false);
-    if (!visible) {
+    if (!(await heading.isVisible().catch(() => false))) {
       return false;
     }
-
     const commercialName = data.cityLine
       ? `${data.name} — ${data.cityLine} — ${data.businessType || 'Transporte'}`
       : data.name;
-
     this._lastCompanyName = commercialName;
-
     const createCard = this.page
       .locator('section.company-dash__card')
       .filter({ has: this.page.getByRole('heading', { name: 'Crear empresa' }) });
-
     const act = 40_000;
     await safeFill(createCard.getByPlaceholder('Nombre comercial'), commercialName, { timeout: act });
     await safeFill(createCard.locator('input.inp').nth(1), data.phone, { timeout: act });
     await safeFill(createCard.locator('input.inp').nth(2), 'QA Admin Onboarding', { timeout: act });
     await safeFill(createCard.locator('input[type="email"]').first(), data.adminEmail, { timeout: act });
-
     await safeClick(createCard.getByRole('button', { name: /Crear empresa/i }), { timeout: act });
-    await this.page.getByText('Creando…').waitFor({ state: 'hidden', timeout: 60_000 }).catch(() => {});
-
+    await this.page.getByText('Creando…').waitFor({ state: 'hidden', timeout: T.XL }).catch(() => {});
     await this.waitDashboardLoaded();
     return true;
   }
 
-  /**
-   * Devuelve fragmentos de texto relacionados al plan (tarjeta "Plan actual" o metadatos).
-   */
   async getCurrentPlanText() {
     const parts = [];
-
     const trialTitle = this.page.locator('.trial-current-card__title');
     if (await trialTitle.isVisible().catch(() => false)) {
       parts.push((await trialTitle.innerText()).trim());
     }
-
     const trialBanner = this.page.locator('.banner--trial');
     if (await trialBanner.isVisible().catch(() => false)) {
       parts.push((await trialBanner.innerText()).trim());
     }
-
     const starterTier = this.page.getByText(/PLAN STARTER/i).first();
     if (await starterTier.isVisible().catch(() => false)) {
       parts.push((await starterTier.innerText()).trim());
     }
-
     const planMeta = this.page.getByText(/Plan actual:/i).first();
     if (await planMeta.isVisible().catch(() => false)) {
       parts.push((await planMeta.innerText()).trim());
     }
-
-    const body = await this.page.locator('body').innerText();
-    parts.push(body);
-
+    parts.push(await this.page.locator('body').innerText());
     return parts.join('\n---\n');
   }
 
-  /** Confirma que el texto del plan contiene alguno de los indicadores flexibles. */
   async expectFlexibleFreeOrStarterPlan() {
     const blob = await this.getCurrentPlanText();
     const ok = PLAN_HINT_PATTERNS.some((re) => re.test(blob));
     expect(ok, `Texto de plan no reconocido. Fragmento:\n${blob.slice(0, 1200)}`).toBeTruthy();
   }
 
-  /**
-   * Algunas vistas muestran un modal de notificaciones push; el overlay intercepta clics
-   * (p. ej. .push-notifications-modal-overlay) hasta cerrarse.
-   */
   async _dismissPushNotificationModalIfPresent() {
     const overlay = this.page.locator('.push-notifications-modal-overlay').first();
-    const visible = await overlay.isVisible().catch(() => false);
-    if (!visible) return;
-
+    if (!(await overlay.isVisible().catch(() => false))) return;
     const root = this.page.locator('.push-notifications-modal-overlay, [class*="push-notifications"]').first();
     const candidates = [
       root.getByRole('button', { name: /Cerrar|Aceptar|Entendido|Continuar|Ahora no|Más tarde|No, gracias|OK/i }),
-      root.locator('button, [role="button"], .btn, a[href^="#"]').first(),
+      root.getByRole('button').first(),
     ];
     for (const loc of candidates) {
       if (await loc.isVisible().catch(() => false)) {
-        await loc.click({ timeout: 5000 }).catch(() => {});
+        await loc.click({ timeout: T.SHORT }).catch(() => {});
         break;
       }
     }
     await this.page.keyboard.press('Escape');
-    await expect(overlay).toBeHidden({ timeout: 8000 }).catch(() => {});
+    await expect(overlay).toBeHidden({ timeout: T.MEDIUM - 2_000 }).catch(() => {});
   }
 
-  /**
-   * Abre el acordeón "Datos de empresa" si hace falta (el h2 del nombre queda hidden si <details> está cerrado).
-   * En CompanyDashboardView el bloque usa la clase `company-accordion__item--company`.
-   */
   async _ensureCompanyDetailsOpen() {
     await this._dismissPushNotificationModalIfPresent();
-
     const details = this.page.locator('details.company-accordion__item--company').first();
-    await expect(details).toBeVisible({ timeout: 45_000 });
-
+    await expect(details).toBeVisible({ timeout: T.LONG });
     if ((await details.getAttribute('open')) == null) {
-      // force: el overlay a veces sigue arriba un instante; evita "intercepts pointer events"
       await details.locator('summary').first().click({ force: true });
     }
-
     const nameH2 = details.locator('section.company-dash__card--inside-accordion h2').first();
-    // El título h2 queda "hidden" en DOM si <details> sigue colapsado; al abrir, debe mostrarse.
     await expect(nameH2).toBeVisible({ timeout: 25_000 });
   }
 
-  /**
-   * Obtiene el nombre comercial mostrado (acordeón "Datos de empresa" o variable interna).
-   */
   async getCompanyName() {
     await this._ensureCompanyDetailsOpen();
-
-    // El nombre vive en el h2 del acordeón "Datos de empresa" (no en el h2 del formulario "Crear empresa").
     const details = this.page.locator('details.company-accordion__item--company');
     const h2 = details.locator('.company-dash__card--inside-accordion h2, h2').first();
-
     if (this._lastCompanyName) {
       await expect(h2).toBeVisible({ timeout: 30_000 });
-      await expect(h2).toContainText(this._lastCompanyName, { timeout: 10_000 });
+      await expect(h2).toContainText(this._lastCompanyName, { timeout: T.MEDIUM - 2_000 });
       return this._lastCompanyName;
     }
-
     await waitVisible(h2, { timeout: 30_000 });
     return (await h2.innerText()).trim();
   }
 
-  /**
-   * Captura de pantalla con nombre descriptivo bajo test-results/.
-   * @param {string} name
-   */
   async takeScreenshot(name) {
     const fs = require('fs');
     const safe = String(name).replace(/[^\w.-]+/g, '_');
