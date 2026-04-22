@@ -32,7 +32,8 @@ const localChrome = {
 /** @type {import('@playwright/test').PlaywrightTestConfig} */
 module.exports = {
   testDir: './tests',
-  timeout: 90_000,
+  // En CI: esperas largas (dashboard + reload + reintentos) superan 90s con facilidad.
+  timeout: process.env.CI ? 180_000 : 90_000,
   expect: { timeout: 15_000 },
   retries: 1,
   workers: isCI ? 1 : undefined,
@@ -44,7 +45,7 @@ module.exports = {
     video: 'retain-on-failure',
     trace: 'retain-on-failure',
     actionTimeout: 25_000,
-    navigationTimeout: 60_000,
+    navigationTimeout: process.env.CI ? 90_000 : 60_000,
     ...(storageState ? { storageState } : {}),
   },
   projects: [

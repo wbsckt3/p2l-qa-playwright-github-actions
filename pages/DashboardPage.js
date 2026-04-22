@@ -208,6 +208,9 @@ class DashboardPage {
     const createCompany = this.page.getByRole('heading', { name: 'Crear empresa' });
     const empresaHeader = this.page.getByRole('heading', { name: /Empresa · P2L/i });
     const planes = this.page.getByRole('button', { name: /Planes/i });
+    // Cabecera autenticada: más estable que "Planes" (acordeón) en DOM lento/CI
+    const cerrarSesion = this.page.getByRole('button', { name: /Cerrar sesión/i });
+    const irUnidades = this.page.getByRole('button', { name: /Ir a Unidades/i });
     const loginHeading = this.page.getByRole('heading', { name: /Inicia sesión con Google/i });
     const googleBtnContainer = this.page.locator('#google-signin-button');
 
@@ -215,13 +218,15 @@ class DashboardPage {
     // (redirect SPA aún resolviendo) hacía .not.toBe('unknown') y cortaba el wait antes de tiempo.
     const dashboardReady = createCompany
       .or(empresaHeader)
-      .or(planes);
+      .or(planes)
+      .or(cerrarSesion)
+      .or(irUnidades);
     const tryVisible = async (timeout) => {
       await expect(dashboardReady).toBeVisible({ timeout });
     };
 
     try {
-      await tryVisible(75_000);
+      await tryVisible(60_000);
     } catch (e) {
       if (process.env.CI === 'true' || process.env.PLAYWRIGHT_SKIP_GOOGLE_UI === '1') {
         await this.page.reload({ waitUntil: 'domcontentloaded' });
@@ -229,7 +234,7 @@ class DashboardPage {
         const loading2 = this.page.getByText('Cargando…');
         await loading2.waitFor({ state: 'hidden', timeout: 45_000 }).catch(() => {});
         try {
-          await tryVisible(45_000);
+          await tryVisible(50_000);
           return;
         } catch (e2) {
           e = e2;
@@ -252,7 +257,15 @@ class DashboardPage {
           'La sesión no está en dashboard (sigue en login). URL: ' + url + ' Pruebe regenerar storage o test:headed.'
         );
       }
-      throw e;
+      const bodySnippet = (await this.page.locator('body').innerText().catch(() => '')).slice(0, 800);
+      throw new Error(
+        'No se detectó el panel empresa a tiempo. URL: ' +
+          url +
+          ' . Revise el trace/screenshot. Fragmento de página:\n' +
+          bodySnippet +
+          '\n---\n' +
+          (e && e.message ? String(e.message) : '')
+      );
     }
   }
 
