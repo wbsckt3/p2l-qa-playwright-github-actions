@@ -8,8 +8,6 @@ const { takeTimestampName } = require('../utils/helpers');
 
 test.describe('P2L — Dashboard empresa (producción)', () => {
   test.beforeEach(function () {
-    // En runners de GitHub el login Google por UI (email/contraseña) suele romperse
-    // (captcha, UI distinta, sin campo password). El flujo soportado en CI es sesión guardada.
     test.skip(
       process.env.CI === 'true' && process.env.PLAYWRIGHT_SKIP_GOOGLE_UI !== '1',
       'CI sin sesión: añada el secreto PLAYWRIGHT_STORAGE_B64 (ver README). El login Google automatizado no es fiable en GitHub Actions.'
@@ -24,31 +22,38 @@ test.describe('P2L — Dashboard empresa (producción)', () => {
     expect(password, 'Definir ADMIN_PASSWORD en .env o en secretos de GitHub').toBeTruthy();
 
     const dash = new DashboardPage(page);
-    await dash.open();
-    await dash.loginWithGoogle(email, password);
-    await dash.waitDashboardLoaded();
 
-    const companyBase = takeTimestampName('QA Mobility ');
-    const created = await dash.createCompanyIfNeeded({
-      name: companyBase,
-      phone: '3000000000',
-      cityLine: 'Medellín',
-      businessType: 'Transporte',
-      adminEmail: email,
+    await test.step('Abrir app y autenticar (Google o storage en CI)', async () => {
+      await dash.open();
+      await dash.loginWithGoogle(email, password);
     });
 
-    // Si ya existía empresa, igual validamos plan y nombre visible.
+    const companyBase = takeTimestampName('QA Mobility ');
+
+    let created;
+    await test.step('Crear empresa si no existe', async () => {
+      created = await dash.createCompanyIfNeeded({
+        name: companyBase,
+        phone: '3000000000',
+        cityLine: 'Medellín',
+        businessType: 'Transporte',
+        adminEmail: email,
+      });
+    });
+
     if (!created) {
-      // Mantener trazabilidad cuando no hay formulario (cuenta ya con empresa).
       dash._lastCompanyName = null;
     }
 
-    await dash.waitDashboardLoaded();
-    await dash.expectFlexibleFreeOrStarterPlan();
+    await test.step('Validar plan y nombre de empresa en panel', async () => {
+      await dash.waitDashboardLoaded();
+      await dash.expectFlexibleFreeOrStarterPlan();
+      const nameShown = await dash.getCompanyName();
+      expect(nameShown.length).toBeGreaterThan(2);
+    });
 
-    const nameShown = await dash.getCompanyName();
-    expect(nameShown.length).toBeGreaterThan(2);
-
-    await dash.takeScreenshot(`onboarding-final-${Date.now()}`);
+    await test.step('Captura final de evidencia', async () => {
+      await dash.takeScreenshot(`onboarding-final-${Date.now()}`);
+    });
   });
 });

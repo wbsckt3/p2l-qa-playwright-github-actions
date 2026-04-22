@@ -32,10 +32,10 @@ const localChrome = {
 /** @type {import('@playwright/test').PlaywrightTestConfig} */
 module.exports = {
   testDir: './tests',
-  // En CI: esperas largas (dashboard + reload + reintentos) superan 90s con facilidad.
-  timeout: process.env.CI ? 180_000 : 90_000,
+  // Test largo: dashboard + reload + 2 reintentos de job; el nav global es 45s (SPA puede compensar vía expect en POM)
+  timeout: isCI ? 180_000 : 90_000,
   expect: { timeout: 15_000 },
-  retries: 1,
+  retries: isCI ? 2 : 0,
   workers: isCI ? 1 : undefined,
   reporter: [['html', { open: 'never', outputFolder: 'playwright-report' }]],
   use: {
@@ -44,8 +44,8 @@ module.exports = {
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
     trace: 'retain-on-failure',
-    actionTimeout: 25_000,
-    navigationTimeout: process.env.CI ? 90_000 : 60_000,
+    actionTimeout: 15_000,
+    navigationTimeout: 45_000,
     ...(storageState ? { storageState } : {}),
   },
   projects: [

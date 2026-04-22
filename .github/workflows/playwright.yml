@@ -48,6 +48,7 @@ jobs:
           name: playwright-report
           path: playwright-report/
 
+      # Incluye trace, video, capturas, test-results/ci-debug/ (POM bajo fallo) si existen
       - uses: actions/upload-artifact@v4
         if: always()
         with:

@@ -5,19 +5,23 @@
 /**
  * Clic con espera a estado visible y habilitado.
  * @param {import('@playwright/test').Locator} locator
+ * @param {{ timeout?: number }} [opts] — p. ej. flujo Google; el actionTimeout global en CI es corto
  */
-async function safeClick(locator) {
-  await locator.waitFor({ state: 'visible' });
-  await locator.click({ trial: false });
+async function safeClick(locator, opts) {
+  const t = opts && opts.timeout;
+  await locator.waitFor({ state: 'visible', ...(t != null ? { timeout: t } : {}) });
+  await locator.click({ trial: false, ...(t != null ? { timeout: t } : {}) });
 }
 
 /**
  * Relleno con limpieza previa y espera de visibilidad.
  * @param {import('@playwright/test').Locator} locator
  * @param {string} text
+ * @param {{ timeout?: number }} [opts]
  */
-async function safeFill(locator, text) {
-  await locator.waitFor({ state: 'visible' });
+async function safeFill(locator, text, opts) {
+  const t = opts && opts.timeout;
+  await locator.waitFor({ state: 'visible', ...(t != null ? { timeout: t } : {}) });
   await locator.fill('');
   await locator.fill(text);
 }
