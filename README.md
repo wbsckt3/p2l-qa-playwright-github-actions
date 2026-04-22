@@ -164,6 +164,10 @@ Pegar el resultado en el secreto `PLAYWRIGHT_STORAGE_B64` (sin saltos de línea)
 - **No** suba `storageState.json` al repositorio (es estado de sesión).
 - Sigue pudiendo ocurrir el aviso de Google *“navegador o aplicación no segura”*; en ese caso use `test:headed` o el script manual.
 
+## Artifacts en GitHub Actions
+
+Tras un run, baje el artifact **playwright-e2e-outputs**. Dentro del ZIP verá `playwright-report/index.html` (reporte interactivo de Playwright) y `test-results/` (PNG, trazas, vídeo). **Abra `index.html` en el navegador** o en local: `npx playwright show-report playwright-report` desde la carpeta descomprimida. En el workflow los archivos se copian a `ci-upload` porque `playwright-report/` está en `.gitignore` y el subidor de GitHub a veces no empaqueta esas carpetas.
+
 ## Estructura
 
 - `tests/` - specs E2E.

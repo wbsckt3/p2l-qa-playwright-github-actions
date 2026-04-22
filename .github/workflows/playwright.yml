@@ -43,14 +43,30 @@ jobs:
           ADMIN_EMAIL: ${{ secrets.ADMIN_EMAIL }}
           ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
 
-      - uses: actions/upload-artifact@v4
+      # upload-artifact puede excluir rutas en .gitignore; copiamos a una carpeta no ignorada.
+      - name: Empaquetar reporte HTML y test-results
         if: always()
-        with:
-          name: playwright-report
-          path: playwright-report/
+        run: |
+          rm -rf ci-upload
+          mkdir -p ci-upload
+          if [ -d playwright-report ] && [ -f playwright-report/index.html ]; then
+            cp -R playwright-report ci-upload/
+            echo "playwright-report -> ci-upload/ (incl. index.html)"
+          else
+            echo "::warning::No se generó playwright-report/index.html; el reporter HTML debería crearse al terminar los tests."
+            ls -la . || true
+            ls -la playwright-report 2>/dev/null || true
+          fi
+          if [ -d test-results ]; then
+            cp -R test-results ci-upload/test-results
+            echo "test-results -> ci-upload/test-results"
+          fi
+          echo "--- ci-upload ---" && find ci-upload -type f 2>/dev/null | head -200 || true
 
-      - uses: actions/upload-artifact@v4
+      - name: Subir reporte (HTML + capturas, traces)
         if: always()
+        uses: actions/upload-artifact@v4
         with:
-          name: test-results
-          path: test-results/
+          name: playwright-e2e-outputs
+          if-no-files-found: warn
+          path: ci-upload

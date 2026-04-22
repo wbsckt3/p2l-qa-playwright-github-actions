@@ -13,3 +13,6 @@ storageState.json
 PLAYWRIGHT_STORAGE_B64.txt
 playwright/.tmp-profile/
 playwright/.tmp-profile-ci/
+
+# Carpeta solo para empaquetar en CI (no subir contenido al repo)
+ci-upload/

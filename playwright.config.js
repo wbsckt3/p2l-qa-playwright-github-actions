@@ -50,7 +50,10 @@ module.exports = {
   expect: { timeout: 15_000 },
   retries: isCI ? 2 : 0,
   workers: isCI ? 1 : undefined,
-  reporter: [['html', { open: 'never', outputFolder: 'playwright-report' }]],
+  reporter: [
+    ['list'],
+    ['html', { open: 'never', outputFolder: 'playwright-report' }],
+  ],
   use: baseUse,
   projects: [
     {
