@@ -206,10 +206,14 @@ class DashboardPage {
     const createCompany = this.page.getByRole('heading', { name: 'Crear empresa' });
     const empresaHeader = this.page.getByRole('heading', { name: /Empresa · P2L/i });
     const planes = this.page.getByRole('button', { name: /Planes/i });
+    const loginHeading = this.page.getByRole('heading', { name: /Inicia sesión con Google/i });
+    const googleBtnContainer = this.page.locator('#google-signin-button');
 
-    await expect
+    const state = await expect
       .poll(
         async () => {
+          if (await loginHeading.isVisible().catch(() => false)) return 'login';
+          if (await googleBtnContainer.isVisible().catch(() => false)) return 'login';
           if (await createCompany.isVisible().catch(() => false)) return 'create';
           if (await empresaHeader.isVisible().catch(() => false)) return 'dash';
           if (await planes.isVisible().catch(() => false)) return 'dash';
@@ -217,7 +221,25 @@ class DashboardPage {
         },
         { timeout: 60_000, intervals: [500, 1000, 2000] }
       )
-      .not.toBe('unknown');
+      .not.toBe('unknown')
+      .then(() =>
+        // Re-evaluar estado final para decidir mensaje más útil.
+        (async () => {
+          if (await loginHeading.isVisible().catch(() => false)) return 'login';
+          if (await googleBtnContainer.isVisible().catch(() => false)) return 'login';
+          if (await createCompany.isVisible().catch(() => false)) return 'create';
+          if (await empresaHeader.isVisible().catch(() => false)) return 'dash';
+          if (await planes.isVisible().catch(() => false)) return 'dash';
+          return 'unknown';
+        })()
+      );
+
+    if (state === 'login' && process.env.CI === 'true' && process.env.PLAYWRIGHT_SKIP_GOOGLE_UI === '1') {
+      throw new Error(
+        'CI restauró storageState pero la app sigue en login. El estado guardado expiró o no corresponde al tenant. ' +
+          'Regenera storageState.json en local, conviértelo a base64 y actualiza el secret PLAYWRIGHT_STORAGE_B64.'
+      );
+    }
   }
 
   /**

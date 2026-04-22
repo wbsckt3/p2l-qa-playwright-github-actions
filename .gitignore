@@ -9,3 +9,6 @@ node_modules/
 # Estado de sesión local (no subir credenciales reales)
 playwright/.auth/*.json
 !playwright/.auth/.gitkeep
+storageState.json
+PLAYWRIGHT_STORAGE_B64.txt
+playwright/.tmp-profile/

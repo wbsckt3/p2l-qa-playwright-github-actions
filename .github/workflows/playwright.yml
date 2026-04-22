@@ -30,7 +30,7 @@ jobs:
             exit 0
           fi
           mkdir -p playwright/.auth
-          echo "$STORAGE_B64" | base64 -d > playwright/.auth/ci-state.json
+          printf '%s' "$STORAGE_B64" | base64 -d > playwright/.auth/ci-state.json
           test -s playwright/.auth/ci-state.json
           echo "PLAYWRIGHT_STORAGE_STATE=playwright/.auth/ci-state.json" >> "$GITHUB_ENV"
           echo "PLAYWRIGHT_SKIP_GOOGLE_UI=1" >> "$GITHUB_ENV"

@@ -81,30 +81,66 @@ En GitHub: **Settings > Secrets and variables > Actions > Repository secrets**
 
 > Sin `PLAYWRIGHT_STORAGE_B64`, el spec principal se omite en CI por la limitación del login Google automatizado.
 
-## De dónde sacar `PLAYWRIGHT_STORAGE_B64` (en local)
+## De dónde sacar `PLAYWRIGHT_STORAGE_B64` (método manual recomendado)
 
-1. En tu máquina local (ya loguea bien), guarda el estado de sesión:
+`codegen` a veces no deja acceder a Google o no muestra el botón bien. En este repo el flujo que suele funcionar es un **script local** que abre **Google Chrome** con ajustes para reducir el bloqueo de Google, haces el **login a mano** y al terminar se guarda `storageState.json`.
+
+### 1) Generar `storageState.json`
+
+Desde la raíz del repositorio:
 
 ```bash
-npx playwright codegen https://www.refactorii.com/p2l-tenant/dashboard --save-storage=storageState.json
+npm run storage:save
 ```
 
-2. Completa login Google en la ventana que abre Playwright y cierra.
-3. Convierte el JSON a base64:
+(Equivale a `node scripts/saveStorageManual.js`.)
 
-**PowerShell**
+- Se abre Chrome.
+- Navega a `https://www.refactorii.com/p2l-tenant/dashboard` (o la URL de `P2L_DASHBOARD_URL` si la defines).
+- Inicia sesión con Google de forma **manual** hasta ver el panel.
+- Vuelve a la consola y **pulsa Enter** para guardar.
+
+**Opcional (otra ruta de salida):**
+
+```bash
+# Windows PowerShell
+$env:STORAGE_STATE_OUTPUT="playwright/.auth/p2l-admin.json"
+npm run storage:save
+```
+
+### 2) Convertir a base64 para GitHub
+
+Usa **PowerShell** (ruta absoluta al archivo):
 
 ```powershell
-[Convert]::ToBase64String([IO.File]::ReadAllBytes("storageState.json"))
+[Convert]::ToBase64String([IO.File]::ReadAllBytes("C:\ruta\al\proyecto\storageState.json"))
 ```
 
-**Git Bash / Linux**
+Para dejarlo en un archivo (una sola línea, fácil de copiar al secret):
+
+```powershell
+$p = "C:\ruta\al\proyecto\storageState.json"
+$b64 = [Convert]::ToBase64String([IO.File]::ReadAllBytes($p))
+Set-Content -NoNewline -Path "C:\ruta\al\proyecto\PLAYWRIGHT_STORAGE_B64.txt" -Value $b64
+```
+
+En **Git Bash / Linux** (repositorio clonado):
 
 ```bash
-cat storageState.json | base64
+cat storageState.json | base64 -w0
 ```
 
-4. Copia ese valor y pégalo en el secret `PLAYWRIGHT_STORAGE_B64`.
+### 3) Secret en GitHub
+
+En **Settings > Secrets and variables > Actions** crea o actualiza:
+
+- `PLAYWRIGHT_STORAGE_B64` = contenido de la salida base64 (una sola cadena, sin saltos de línea).
+
+### Notas
+
+- **No** subas `storageState.json` al repositorio (es credencial/estado de sesión).
+- Cuando la sesión caduque, repite el proceso.
+- Sigue pudiendo ocurrir el aviso de Google *“navegador o aplicación no segura”*; si pasa, cierra, abre de nuevo, o prueba en la misma máquina donde ya iniciaste sesión en Chrome normal; el script ya incluye `ignoreDefaultArgs` y `AutomationControlled` atenuado.
 
 ## Estructura
 
