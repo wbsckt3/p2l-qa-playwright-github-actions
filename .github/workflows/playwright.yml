@@ -19,7 +19,7 @@ jobs:
 
       - run: npm install --no-audit --no-fund
 
-      - run: npx playwright install --with-deps
+      - run: npx playwright install --with-deps chrome
 
       - name: Restaurar sesion Playwright (opcional)
         env:

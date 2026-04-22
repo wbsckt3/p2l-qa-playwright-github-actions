@@ -19,12 +19,12 @@ async function main() {
   const output = process.env.STORAGE_STATE_OUTPUT || 'storageState.json';
   const targetUrl = process.env.P2L_DASHBOARD_URL || 'https://www.refactorii.com/p2l-tenant/dashboard';
   /**
-   * En GitHub Actions se usa el Chromium de Playwright, no "Chrome" del SO.
-   * Si se guarda el storage con Chrome y luego se corre en CI con Chromium, la sesión puede no aplicar
-   * (mismo sitio, pero otra huella/aislamiento de storage).
-   * STORAGE_FOR_CI=1 abre el Chromium empaquetado, alineado con el runner.
+   * En GitHub Actions el workflow instala y usa Google Chrome (channel: 'chrome', v. playwright.config).
+   * PLAYWRIGHT_USE_CHROMIUM=1 fuerza el Chromium empaquetado (sin Chrome en el SO).
+   * STORAGE_FOR_CI=1 usa un perfil distinto (./playwright/.tmp-profile-ci) pero el mismo channel chrome que en CI.
    */
-  const forCi = process.env.STORAGE_FOR_CI === '1' || process.env.PLAYWRIGHT_USE_CHROMIUM === '1';
+  const forCi = process.env.STORAGE_FOR_CI === '1';
+  const usePureChromium = process.env.PLAYWRIGHT_USE_CHROMIUM === '1';
   const userDataDir = path.join(
     process.cwd(),
     'playwright',
@@ -43,7 +43,7 @@ async function main() {
     ],
   };
 
-  const context = forCi
+  const context = usePureChromium
     ? await chromium.launchPersistentContext(userDataDir, baseOpts)
     : await chromium.launchPersistentContext(userDataDir, { ...baseOpts, channel: 'chrome' });
 
@@ -52,10 +52,12 @@ async function main() {
     await page.goto(targetUrl, { waitUntil: 'domcontentloaded' });
 
     console.log('\n=== Guardado manual de storageState ===');
-    if (forCi) {
-      console.log('MODO: Chromium empaquetado (recomendado para secret compatible con GitHub Actions).');
+    if (usePureChromium) {
+      console.log('MODO: Chromium empaquetado (PLAYWRIGHT_USE_CHROMIUM=1; distinto a CI con Chrome).');
+    } else if (forCi) {
+      console.log('MODO: Google Chrome (perfil CI) — alineado con `npx playwright install chrome` en Actions.');
     } else {
-      console.log('MODO: Google Chrome instalado. Para el secret de CI, use STORAGE_FOR_CI=1 (mismo motor que en Actions).');
+      console.log('MODO: Google Chrome. Para el secret, puede usar $env:STORAGE_FOR_CI="1" y perfil .tmp-profile-ci.');
     }
     console.log(`URL objetivo: ${targetUrl}`);
     console.log('1) Completa login Google en la ventana del navegador');

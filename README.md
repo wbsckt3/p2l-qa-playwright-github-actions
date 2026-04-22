@@ -85,7 +85,7 @@ En GitHub: **Settings > Secrets and variables > Actions > Repository secrets**
 
 `codegen` a veces no deja acceder a Google o no muestra el botón bien. En este repo el flujo que suele funcionar es un **script local**: haces **login a mano** y al terminar se guarda `storageState.json`.
 
-**Importante para GitHub Actions:** en CI se usa el **Chromium empaquetado** de Playwright (Linux). Si genera el `storageState` solo con **Google Chrome** en Windows, el secret a veces **no** rehidrata sesión en el runner. Para alinear el motor con CI, genere el archivo con:
+**Importante para GitHub Actions:** en CI el workflow instala **Google Chrome** (`npx playwright install --with-deps chrome`), mismo canal que en `playwright.config` (`Desktop Chrome` + `channel: 'chrome'`). Para alinear el `storageState` con el runner, genere el archivo con:
 
 ```powershell
 # PowerShell (Windows)
@@ -93,7 +93,7 @@ $env:STORAGE_FOR_CI="1"
 npm run storage:save
 ```
 
-(Requiere `npx playwright install chromium` al menos una vez en esa máquina.)
+(Requiere `npx playwright install chrome` al menos una vez en esa máquina.)
 
 ### 1) Generar `storageState.json`
 
@@ -105,8 +105,9 @@ npm run storage:save
 
 (Equivale a `node scripts/saveStorageManual.js`.)
 
-- Por defecto se abre **Chrome** instalado.
-- Con `STORAGE_FOR_CI=1` se abre el **Chromium** de Playwright (recomendado para el secret que consumen las Actions).
+- Por defecto se abre **Google Chrome** (`channel: 'chrome'`).
+- Con `STORAGE_FOR_CI=1` se usa un perfil distinto (`.tmp-profile-ci`) pero el mismo canal Chrome que en Actions.
+- Con `PLAYWRIGHT_USE_CHROMIUM=1` se abre **Chromium** empaquetado (sin Chrome instalado; puede diferir del motor de CI).
 - Navega a `https://www.refactorii.com/p2l-tenant/dashboard` (o la URL de `P2L_DASHBOARD_URL` si la defines).
 - Inicia sesión con Google de forma **manual** hasta ver el panel.
 - Vuelve a la consola y **pulsa Enter** para guardar.
