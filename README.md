@@ -104,6 +104,8 @@ En GitHub: **Settings > Secrets and variables > Actions > Repository secrets**
 
 Sin `PLAYWRIGHT_STORAGE_B64`, el spec de dashboard de empresa se **omite** en CI; otros specs pueden seguir corriendo.
 
+**Si en CI vuelve a la pantalla de Google** aun con B64, el `storageState` no se está rehidratando (cookies o dominio distintos, sesión vencida, o JSON generado en otro motor). Vuelva a generar el JSON estando **ya en el panel** (URL con `/p2l-tenant/dashboard`); en lo posible con **Google Chrome** y `npx playwright install chrome` alineado al job; convierta a base64 y actualice el secreto.
+
 ## Opcional: login manual y `storageState` en local (depuración o bypass)
 
 `codegen` a veces no deja acceder a Google. Puede usar el **script manual** (login a mano) y, si hace falta, apuntar `PLAYWRIGHT_STORAGE_STATE` en `.env` o usar `PLAYWRIGHT_SKIP_GOOGLE_UI=1` para no repetir el flujo GIS.

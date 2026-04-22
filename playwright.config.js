@@ -11,6 +11,10 @@ if (storageEnv) {
   const resolved = path.resolve(process.cwd(), storageEnv);
   if (fs.existsSync(resolved)) {
     storageStateFromEnv = resolved;
+  } else {
+    console.warn(
+      '[playwright] PLAYWRIGHT_STORAGE_STATE apuntado pero archivo no encontrado, se ignora: ' + resolved
+    );
   }
 }
 

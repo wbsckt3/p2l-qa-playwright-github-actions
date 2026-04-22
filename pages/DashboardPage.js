@@ -364,10 +364,12 @@ class DashboardPage {
 
     if (process.env.CI === 'true' && onLogin) {
       await this._captureDebugState(meta);
+      const b64Hint =
+        process.env.PLAYWRIGHT_SKIP_GOOGLE_UI === '1'
+          ? ' Regenere PLAYWRIGHT_STORAGE_B64: guarde el JSON estando en el dashboard real (`/p2l-tenant/dashboard`); use Chrome (mismo canal que en CI) y vuelva a codificar en base64 una sola línea.'
+          : ' Revise secrets/cuenta o actualice el storage (ver README).';
       throw new Error(
-        'Tras el login en el runner, la app sigue en la pantalla de Google. URL: ' +
-          url +
-          ' — Revise secrets/cuenta, captcha, o actualice PLAYWRIGHT_STORAGE_B64.'
+        'La app sigue en la pantalla de inicio con Google, no en el panel. URL: ' + url + ' —' + b64Hint
       );
     }
     if (onLogin) {
