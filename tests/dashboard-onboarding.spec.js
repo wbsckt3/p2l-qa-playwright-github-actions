@@ -6,6 +6,10 @@ const { test, expect } = require('@playwright/test');
 const { DashboardPage } = require('../pages/DashboardPage');
 const { takeTimestampName } = require('../utils/helpers');
 
+function dashboardOnly() {
+  return process.env.PLAYWRIGHT_DASHBOARD_ONLY === '1';
+}
+
 test.describe('P2L — Dashboard empresa (producción)', () => {
   test.beforeEach(function () {
     // En CI no se abre el flujo Google: hace falta storage (PLAYWRIGHT_STORAGE_B64 en el workflow).
@@ -16,17 +20,30 @@ test.describe('P2L — Dashboard empresa (producción)', () => {
   });
 
   test('Admin nuevo crea empresa y recibe plan free', async ({ page }) => {
+    const onlyDash = dashboardOnly();
     const email = process.env.ADMIN_EMAIL;
     const password = process.env.ADMIN_PASSWORD;
 
-    expect(email, 'Definir ADMIN_EMAIL en .env o en secretos de GitHub').toBeTruthy();
-    expect(password, 'Definir ADMIN_PASSWORD en .env o en secretos de GitHub').toBeTruthy();
+    expect(
+      email,
+      'Definir ADMIN_EMAIL en .env o en secretos (necesario para el formulario de empresa).'
+    ).toBeTruthy();
+    if (!onlyDash) {
+      expect(
+        password,
+        'Definir ADMIN_PASSWORD para login Google (o use PLAYWRIGHT_DASHBOARD_ONLY=1 y storage, ver README).'
+      ).toBeTruthy();
+    }
 
     const dash = new DashboardPage(page);
 
-    await test.step('Abrir app y autenticar (Google local, o storage + bypass en CI)', async () => {
+    await test.step(onlyDash ? 'Abrir y panel (sin probar flujo Google)' : 'Abrir y autenticar', async () => {
       await dash.open();
-      await dash.loginWithGoogle(email, password);
+      if (onlyDash) {
+        await dash.waitDashboardLoaded();
+      } else {
+        await dash.loginWithGoogle(email, password);
+      }
     });
 
     const companyBase = takeTimestampName('QA Mobility ');

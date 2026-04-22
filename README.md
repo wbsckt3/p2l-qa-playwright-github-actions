@@ -38,6 +38,21 @@ ADMIN_EMAIL=...
 ADMIN_PASSWORD=...
 ```
 
+## Modo solo dashboard (sin ejercitar el login de Google)
+
+**Solo aplica en este repo de Playwright (QA), no hace falta cambiar el proyecto P2L.**
+
+Con `PLAYWRIGHT_DASHBOARD_ONLY=1` el spec **no** llama a `loginWithGoogle`: hace `open()` y `waitDashboardLoaded()` usando la sesión ya cargada (`PLAYWRIGHT_STORAGE_STATE` en local, o `PLAYWRIGHT_STORAGE_B64` + workflow en GitHub). Sigue haciendo falta `ADMIN_EMAIL` para el formulario de empresa; `ADMIN_PASSWORD` no se usa en este modo.
+
+```bash
+# .env de ejemplo
+PLAYWRIGHT_DASHBOARD_ONLY=1
+PLAYWRIGHT_STORAGE_STATE=playwright/.auth/p2l-admin.json
+ADMIN_EMAIL=tu@cuenta.qa
+```
+
+En **GitHub Actions** puede añadir `PLAYWRIGHT_DASHBOARD_ONLY: '1'` al paso de `npx playwright test` si quiere el mismo comportamiento (sigue siendo obligatorio el secreto con la sesión en base64 para que el navegador en CI tenga cookies).
+
 ## Ejecución local
 
 Con navegador visible (recomendado para login Google):
