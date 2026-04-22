@@ -317,15 +317,42 @@ class DashboardPage {
   }
 
   /**
+   * Algunas vistas muestran un modal de notificaciones push; el overlay intercepta clics
+   * (p. ej. .push-notifications-modal-overlay) hasta cerrarse.
+   */
+  async _dismissPushNotificationModalIfPresent() {
+    const overlay = this.page.locator('.push-notifications-modal-overlay').first();
+    const visible = await overlay.isVisible().catch(() => false);
+    if (!visible) return;
+
+    const root = this.page.locator('.push-notifications-modal-overlay, [class*="push-notifications"]').first();
+    const candidates = [
+      root.getByRole('button', { name: /Cerrar|Aceptar|Entendido|Continuar|Ahora no|Más tarde|No, gracias|OK/i }),
+      root.locator('button, [role="button"], .btn, a[href^="#"]').first(),
+    ];
+    for (const loc of candidates) {
+      if (await loc.isVisible().catch(() => false)) {
+        await loc.click({ timeout: 5000 }).catch(() => {});
+        break;
+      }
+    }
+    await this.page.keyboard.press('Escape');
+    await expect(overlay).toBeHidden({ timeout: 8000 }).catch(() => {});
+  }
+
+  /**
    * Abre el acordeón "Datos de empresa" si hace falta (el h2 del nombre queda hidden si <details> está cerrado).
    * En CompanyDashboardView el bloque usa la clase `company-accordion__item--company`.
    */
   async _ensureCompanyDetailsOpen() {
+    await this._dismissPushNotificationModalIfPresent();
+
     const details = this.page.locator('details.company-accordion__item--company').first();
     await expect(details).toBeVisible({ timeout: 45_000 });
 
     if ((await details.getAttribute('open')) == null) {
-      await details.locator('summary').first().click();
+      // force: el overlay a veces sigue arriba un instante; evita "intercepts pointer events"
+      await details.locator('summary').first().click({ force: true });
     }
 
     const nameH2 = details.locator('section.company-dash__card--inside-accordion h2').first();
