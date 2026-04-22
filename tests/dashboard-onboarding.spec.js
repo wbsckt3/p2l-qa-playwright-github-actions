@@ -7,13 +7,6 @@ const { DashboardPage } = require('../pages/DashboardPage');
 const { takeTimestampName } = require('../utils/helpers');
 
 test.describe('P2L — Dashboard empresa (producción)', () => {
-  test.beforeEach(function () {
-    test.skip(
-      process.env.CI === 'true' && process.env.PLAYWRIGHT_SKIP_GOOGLE_UI !== '1',
-      'CI sin sesión: añada el secreto PLAYWRIGHT_STORAGE_B64 (ver README). El login Google automatizado no es fiable en GitHub Actions.'
-    );
-  });
-
   test('Admin nuevo crea empresa y recibe plan free', async ({ page }) => {
     const email = process.env.ADMIN_EMAIL;
     const password = process.env.ADMIN_PASSWORD;

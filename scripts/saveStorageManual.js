@@ -69,7 +69,7 @@ async function main() {
     const resolved = path.resolve(process.cwd(), output);
     await context.storageState({ path: resolved });
     console.log(`\nOK: storageState guardado en ${resolved}`);
-    console.log('Siguiente paso: convertir a base64 y subir a secret PLAYWRIGHT_STORAGE_B64.');
+    console.log('Siguiente paso: puede usar el JSON con PLAYWRIGHT_STORAGE_STATE en local, o dejar de usarlo: en CI se genera la sesión en el workflow (ver README).');
   } finally {
     await context.close();
   }

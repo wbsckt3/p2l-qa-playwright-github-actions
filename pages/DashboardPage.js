@@ -239,16 +239,18 @@ class DashboardPage {
       await new Promise((r) => setTimeout(r, 450));
     }
     throw new Error(
-      'Google no mostró el campo de contraseña. Revise captcha/2FA o use PLAYWRIGHT_STORAGE_B64 en CI; ver test-results/ci-debug si falla en Actions.'
+      'Google no mostró el campo de contraseña. Revise captcha/2FA o mire test-results/ci-debug en Actions.'
     );
   }
 
   /**
-   * Con storageState (PLAYWRIGHT_SKIP_GOOGLE_UI) o sesión ya en panel, no abre el flujo GIS.
-   * Sesión reutilizable: `PLAYWRIGHT_STORAGE_STATE` en playwright.config.
+   * @param {{ forceFullLogin?: boolean }} [opts] — en CI, `auth.setup` usa `forceFullLogin: true` para no omitir el login aunque exista `PLAYWRIGHT_SKIP_GOOGLE_UI` en el proceso.
+   * Con `PLAYWRIGHT_SKIP_GOOGLE_UI=1` (y sin forceFull): solo espera al panel.
+   * Sesión: `storageState` en config o en proyecto `chrome` (CI) tras `auth.setup.js`.
    */
-  async loginWithGoogle(email, password) {
-    if (process.env.PLAYWRIGHT_SKIP_GOOGLE_UI === '1') {
+  async loginWithGoogle(email, password, opts = {}) {
+    const forceFull = opts.forceFullLogin === true;
+    if (!forceFull && process.env.PLAYWRIGHT_SKIP_GOOGLE_UI === '1') {
       await this.waitDashboardLoaded();
       return;
     }
@@ -293,7 +295,7 @@ class DashboardPage {
     }
     if (!authPage) {
       throw new Error(
-        'No apareció autenticación de Google (popup o pestaña). En Actions use el secreto PLAYWRIGHT_STORAGE_B64 (ver README) o pruebe local: npm run test:headed.'
+        'No apareció autenticación de Google (popup o pestaña). Pruebe test:headed o revisar bloqueo/captcha; en CI el job genera la sesión en el propio runner (proyecto auth).'
       );
     }
 
@@ -361,12 +363,12 @@ class DashboardPage {
       signal: String(lastSignal),
     };
 
-    if (process.env.CI === 'true' && process.env.PLAYWRIGHT_SKIP_GOOGLE_UI === '1' && onLogin) {
+    if (process.env.CI === 'true' && onLogin) {
       await this._captureDebugState(meta);
       throw new Error(
-        'CI restauró storageState pero la app sigue en login. URL: ' +
+        'Tras el login en el runner, la app sigue en la pantalla de Google. URL: ' +
           url +
-          ' — Regenere con STORAGE_FOR_CI=1 y npm run storage:save, base64 a PLAYWRIGHT_STORAGE_B64.'
+          ' — Revise secrets/cuenta, captcha, o mire el trace de tests/auth.setup.js en CI.'
       );
     }
     if (onLogin) {

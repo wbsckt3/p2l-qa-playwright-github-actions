@@ -77,25 +77,33 @@ En GitHub: **Settings > Secrets and variables > Actions > Repository secrets**
 
 - `ADMIN_EMAIL`
 - `ADMIN_PASSWORD`
-- `PLAYWRIGHT_STORAGE_B64` (opcional pero recomendado)
 
-> Sin `PLAYWRIGHT_STORAGE_B64`, el spec principal se omite en CI por la limitación del login Google automatizado.
+### Cómo funciona el login en GitHub Actions (sin subir `storageState` local)
 
-## De dónde sacar `PLAYWRIGHT_STORAGE_B64` (método manual recomendado)
+**No hace falta** el secreto `PLAYWRIGHT_STORAGE_B64` ni subir un JSON generado en tu PC.
 
-`codegen` a veces no deja acceder a Google o no muestra el botón bien. En este repo el flujo que suele funcionar es un **script local**: haces **login a mano** y al terminar se guarda `storageState.json`.
+En CI el workflow, en un solo job:
 
-**Importante para GitHub Actions:** en CI el workflow instala **Google Chrome** (`npx playwright install --with-deps chrome`), mismo canal que en `playwright.config` (`Desktop Chrome` + `channel: 'chrome'`). Para alinear el `storageState` con el runner, genere el archivo con:
+1. **Proyecto `auth`**: abre el navegador en el propio runner, ejecuta un login real con Google (usa `DashboardPage.loginWithGoogle` con `forceFullLogin: true`) y escribe `playwright/.auth/ci-generated.json` en el disco del runner.
+2. **Proyecto `chrome`**: depende de `auth`, arranca con ese `storageState` y corre los E2E (`**/*.spec.js`).
+
+Así se evita el desfase entorno / IP / motor entre un archivo generado en local y el CI.
+
+> Google puede mostrar captcha, 2FA o bloquear cuentas raras. Si el paso de `auth` falla, mire el trace/artifacts del workflow y reconsidere una cuenta de QA o políticas de la cuenta.
+
+## Opcional: login manual y `storageState` en local (depuración o bypass)
+
+`codegen` a veces no deja acceder a Google. Puede usar el **script manual** (login a mano) y, si hace falta, apuntar `PLAYWRIGHT_STORAGE_STATE` en `.env` o usar `PLAYWRIGHT_SKIP_GOOGLE_UI=1` para no repetir el flujo GIS.
+
+**Importante (solo si guarda usted el JSON en local):** se recomienda `npx playwright install chrome` y `channel: 'chrome'` coherente con el README de Playwright, para aproximarse a lo que usa el `playwright.config`.
 
 ```powershell
-# PowerShell (Windows)
+# PowerShell (Windows), perfil separado
 $env:STORAGE_FOR_CI="1"
 npm run storage:save
 ```
 
-(Requiere `npx playwright install chrome` al menos una vez en esa máquina.)
-
-### 1) Generar `storageState.json`
+### 1) Generar `storageState.json` (manual)
 
 Desde la raíz del repositorio:
 
@@ -120,45 +128,17 @@ $env:STORAGE_STATE_OUTPUT="playwright/.auth/p2l-admin.json"
 npm run storage:save
 ```
 
-### 2) Convertir a base64 para GitHub
+### 2) Notas sobre almacenamiento local
 
-Usa **PowerShell** (ruta absoluta al archivo):
-
-```powershell
-[Convert]::ToBase64String([IO.File]::ReadAllBytes("C:\ruta\al\proyecto\storageState.json"))
-```
-
-Para dejarlo en un archivo (una sola línea, fácil de copiar al secret):
-
-```powershell
-$p = "C:\ruta\al\proyecto\storageState.json"
-$b64 = [Convert]::ToBase64String([IO.File]::ReadAllBytes($p))
-Set-Content -NoNewline -Path "C:\ruta\al\proyecto\PLAYWRIGHT_STORAGE_B64.txt" -Value $b64
-```
-
-En **Git Bash / Linux** (repositorio clonado):
-
-```bash
-cat storageState.json | base64 -w0
-```
-
-### 3) Secret en GitHub
-
-En **Settings > Secrets and variables > Actions** crea o actualiza:
-
-- `PLAYWRIGHT_STORAGE_B64` = contenido de la salida base64 (una sola cadena, sin saltos de línea).
-
-### Notas
-
-- **No** subas `storageState.json` al repositorio (es credencial/estado de sesión).
-- Cuando la sesión caduque, repite el proceso.
-- Sigue pudiendo ocurrir el aviso de Google *“navegador o aplicación no segura”*; si pasa, cierra, abre de nuevo, o prueba en la misma máquina donde ya iniciaste sesión en Chrome normal; el script ya incluye `ignoreDefaultArgs` y `AutomationControlled` atenuado.
+- **No** suba `storageState.json` al repositorio (es estado de sesión).
+- Sigue pudiendo ocurrir el aviso de Google *“navegador o aplicación no segura”*; en ese caso use `test:headed` o el script manual.
 
 ## Estructura
 
-- `tests/` - specs E2E.
+- `tests/` - specs E2E (`**/*.spec.js`); en CI, `auth.setup.js` (proyecto `auth`, login + JSON en el runner).
 - `pages/` - Page Object Model (`DashboardPage`).
 - `utils/` - helpers y datos de prueba.
+- `playwright/.auth/` - se genera `ci-generated.json` en el job (ignorado por git; ver `.gitignore`).
 - `.github/workflows/playwright.yml` - pipeline CI.
 
 ## Notas sobre la UI real
