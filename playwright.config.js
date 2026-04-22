@@ -16,8 +16,6 @@ if (storageEnv) {
 
 const isCI = !!process.env.CI;
 const useBundledChromium = process.env.PLAYWRIGHT_USE_CHROMIUM === '1';
-/** Misma ruta que escribe `tests/auth.setup.js` (sesión generada en el job de GitHub). */
-const CI_GENERATED_STATE = path.join(__dirname, 'playwright', '.auth', 'ci-generated.json');
 
 const baseUse = {
   baseURL: 'https://www.refactorii.com',
@@ -30,12 +28,6 @@ const baseUse = {
   ...(storageStateFromEnv ? { storageState: storageStateFromEnv } : {}),
 };
 
-/** Nunca inyectar storage externo al proyecto `auth` (debe ser login limpio en el runner). */
-const baseUseAuth = { ...baseUse };
-if (Object.prototype.hasOwnProperty.call(baseUseAuth, 'storageState')) {
-  delete baseUseAuth.storageState;
-}
-
 const chromeOrChromium = useBundledChromium
   ? { browserName: 'chromium' }
   : {
@@ -47,31 +39,6 @@ const chromeOrChromium = useBundledChromium
       },
     };
 
-const projects = [];
-
-if (isCI) {
-  projects.push({
-    name: 'auth',
-    testMatch: '**/auth.setup.js',
-    retries: 0,
-    use: { ...baseUseAuth, ...chromeOrChromium },
-  });
-  projects.push({
-    name: 'chrome',
-    testMatch: '**/*.spec.js',
-    testIgnore: '**/auth.setup.js',
-    dependencies: ['auth'],
-    use: { ...baseUse, ...chromeOrChromium, storageState: CI_GENERATED_STATE },
-  });
-} else {
-  projects.push({
-    name: useBundledChromium ? 'chromium' : 'chrome',
-    testMatch: '**/*.spec.js',
-    testIgnore: '**/auth.setup.js',
-    use: { ...baseUse, ...chromeOrChromium },
-  });
-}
-
 /** @type {import('@playwright/test').PlaywrightTestConfig} */
 module.exports = {
   testDir: './tests',
@@ -81,5 +48,10 @@ module.exports = {
   workers: isCI ? 1 : undefined,
   reporter: [['html', { open: 'never', outputFolder: 'playwright-report' }]],
   use: baseUse,
-  projects,
+  projects: [
+    {
+      name: useBundledChromium ? 'chromium' : 'chrome',
+      use: { ...baseUse, ...chromeOrChromium },
+    },
+  ],
 };

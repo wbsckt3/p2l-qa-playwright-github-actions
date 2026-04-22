@@ -21,9 +21,22 @@ jobs:
 
       - run: npx playwright install --with-deps chrome
 
+      # En CI no se ejecuta login Google en el workflow: se rehidrata sesión desde el secreto (generada fuera del job).
+      - name: Sesion Playwright desde secreto (opcional)
+        env:
+          STORAGE_B64: ${{ secrets.PLAYWRIGHT_STORAGE_B64 }}
+        run: |
+          if [ -z "$STORAGE_B64" ]; then
+            echo "Sin PLAYWRIGHT_STORAGE_B64: el E2E de dashboard se omitira (no hay login en CI)."
+            exit 0
+          fi
+          mkdir -p playwright/.auth
+          printf '%s' "$STORAGE_B64" | base64 -d > playwright/.auth/ci-state.json
+          test -s playwright/.auth/ci-state.json
+          echo "PLAYWRIGHT_STORAGE_STATE=playwright/.auth/ci-state.json" >> "$GITHUB_ENV"
+          echo "PLAYWRIGHT_SKIP_GOOGLE_UI=1" >> "$GITHUB_ENV"
+
       - name: Ejecutar Playwright
-        # Orden: proyecto `auth` hace login en el runner y escribe `playwright/.auth/ci-generated.json`.
-        # Proyecto `chrome` reutiliza esa sesión (mismo entorno) y corre los `*.spec.js`.
         run: npx playwright test
         env:
           CI: 'true'

@@ -7,6 +7,14 @@ const { DashboardPage } = require('../pages/DashboardPage');
 const { takeTimestampName } = require('../utils/helpers');
 
 test.describe('P2L — Dashboard empresa (producción)', () => {
+  test.beforeEach(function () {
+    // En CI no se abre el flujo Google: hace falta storage (PLAYWRIGHT_STORAGE_B64 en el workflow).
+    test.skip(
+      process.env.CI === 'true' && process.env.PLAYWRIGHT_SKIP_GOOGLE_UI !== '1',
+      'En CI el workflow no inicia sesión con Google. Suba PLAYWRIGHT_STORAGE_B64 o omita el E2E (ver README).'
+    );
+  });
+
   test('Admin nuevo crea empresa y recibe plan free', async ({ page }) => {
     const email = process.env.ADMIN_EMAIL;
     const password = process.env.ADMIN_PASSWORD;
@@ -16,7 +24,7 @@ test.describe('P2L — Dashboard empresa (producción)', () => {
 
     const dash = new DashboardPage(page);
 
-    await test.step('Abrir app y autenticar (Google o storage en CI)', async () => {
+    await test.step('Abrir app y autenticar (Google local, o storage + bypass en CI)', async () => {
       await dash.open();
       await dash.loginWithGoogle(email, password);
     });

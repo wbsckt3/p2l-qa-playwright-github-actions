@@ -244,9 +244,8 @@ class DashboardPage {
   }
 
   /**
-   * @param {{ forceFullLogin?: boolean }} [opts] — en CI, `auth.setup` usa `forceFullLogin: true` para no omitir el login aunque exista `PLAYWRIGHT_SKIP_GOOGLE_UI` en el proceso.
-   * Con `PLAYWRIGHT_SKIP_GOOGLE_UI=1` (y sin forceFull): solo espera al panel.
-   * Sesión: `storageState` en config o en proyecto `chrome` (CI) tras `auth.setup.js`.
+   * @param {{ forceFullLogin?: boolean }} [opts] — si `forceFullLogin: true`, ignora `PLAYWRIGHT_SKIP_GOOGLE_UI` y ejecuta el flujo Google (útil en local).
+   * Con `PLAYWRIGHT_SKIP_GOOGLE_UI=1` (y sin forceFull): solo espera al panel (sesión vía `storageState` en config, p. ej. CI con B64).
    */
   async loginWithGoogle(email, password, opts = {}) {
     const forceFull = opts.forceFullLogin === true;
@@ -368,7 +367,7 @@ class DashboardPage {
       throw new Error(
         'Tras el login en el runner, la app sigue en la pantalla de Google. URL: ' +
           url +
-          ' — Revise secrets/cuenta, captcha, o mire el trace de tests/auth.setup.js en CI.'
+          ' — Revise secrets/cuenta, captcha, o actualice PLAYWRIGHT_STORAGE_B64.'
       );
     }
     if (onLogin) {

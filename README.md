@@ -77,19 +77,17 @@ En GitHub: **Settings > Secrets and variables > Actions > Repository secrets**
 
 - `ADMIN_EMAIL`
 - `ADMIN_PASSWORD`
+- `PLAYWRIGHT_STORAGE_B64` (recomendado para el E2E de dashboard; ver abajo)
 
-### Cómo funciona el login en GitHub Actions (sin subir `storageState` local)
+### Google en GitHub Actions (sin login en el workflow)
 
-**No hace falta** el secreto `PLAYWRIGHT_STORAGE_B64` ni subir un JSON generado en tu PC.
+**El workflow de CI no intenta iniciar sesión con Google** (evita captcha, 2FA y bloqueos habituales en runners).
 
-En CI el workflow, en un solo job:
+1. Usted (o otra pipeline) genera un `storageState.json` con sesión ya válida (p. ej. `npm run storage:save` con login manual en una máquina con Chrome coherente con el runner).
+2. Convierte el JSON a **una sola cadena base64** y la guarda en el secreto `PLAYWRIGHT_STORAGE_B64`.
+3. Al ejecutarse el job, se decodifica a `playwright/.auth/ci-state.json`, se fija `PLAYWRIGHT_STORAGE_STATE` y `PLAYWRIGHT_SKIP_GOOGLE_UI=1`, y los tests reutilizan la sesión **sin** abrir el flujo Google en GitHub.
 
-1. **Proyecto `auth`**: abre el navegador en el propio runner, ejecuta un login real con Google (usa `DashboardPage.loginWithGoogle` con `forceFullLogin: true`) y escribe `playwright/.auth/ci-generated.json` en el disco del runner.
-2. **Proyecto `chrome`**: depende de `auth`, arranca con ese `storageState` y corre los E2E (`**/*.spec.js`).
-
-Así se evita el desfase entorno / IP / motor entre un archivo generado en local y el CI.
-
-> Google puede mostrar captcha, 2FA o bloquear cuentas raras. Si el paso de `auth` falla, mire el trace/artifacts del workflow y reconsidere una cuenta de QA o políticas de la cuenta.
+Sin `PLAYWRIGHT_STORAGE_B64`, el spec de dashboard de empresa se **omite** en CI; otros specs pueden seguir corriendo.
 
 ## Opcional: login manual y `storageState` en local (depuración o bypass)
 
@@ -128,17 +126,33 @@ $env:STORAGE_STATE_OUTPUT="playwright/.auth/p2l-admin.json"
 npm run storage:save
 ```
 
-### 2) Notas sobre almacenamiento local
+### 2) Base64 para el secreto `PLAYWRIGHT_STORAGE_B64` (CI)
+
+**PowerShell** (ruta al JSON generado, una sola línea):
+
+```powershell
+[Convert]::ToBase64String([IO.File]::ReadAllBytes("C:\ruta\storageState.json"))
+```
+
+**Git Bash / Linux:**
+
+```bash
+cat storageState.json | base64 -w0
+```
+
+Pegar el resultado en el secreto `PLAYWRIGHT_STORAGE_B64` (sin saltos de línea).
+
+### 3) Notas sobre almacenamiento local
 
 - **No** suba `storageState.json` al repositorio (es estado de sesión).
 - Sigue pudiendo ocurrir el aviso de Google *“navegador o aplicación no segura”*; en ese caso use `test:headed` o el script manual.
 
 ## Estructura
 
-- `tests/` - specs E2E (`**/*.spec.js`); en CI, `auth.setup.js` (proyecto `auth`, login + JSON en el runner).
+- `tests/` - specs E2E.
 - `pages/` - Page Object Model (`DashboardPage`).
 - `utils/` - helpers y datos de prueba.
-- `playwright/.auth/` - se genera `ci-generated.json` en el job (ignorado por git; ver `.gitignore`).
+- `playwright/.auth/` - el workflow puede escribir `ci-state.json` desde B64 (ignorado por git; ver `.gitignore`).
 - `.github/workflows/playwright.yml` - pipeline CI.
 
 ## Notas sobre la UI real
