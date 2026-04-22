@@ -12,3 +12,4 @@ playwright/.auth/*.json
 storageState.json
 PLAYWRIGHT_STORAGE_B64.txt
 playwright/.tmp-profile/
+playwright/.tmp-profile-ci/

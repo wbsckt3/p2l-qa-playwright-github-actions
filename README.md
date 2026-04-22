@@ -83,7 +83,17 @@ En GitHub: **Settings > Secrets and variables > Actions > Repository secrets**
 
 ## De dónde sacar `PLAYWRIGHT_STORAGE_B64` (método manual recomendado)
 
-`codegen` a veces no deja acceder a Google o no muestra el botón bien. En este repo el flujo que suele funcionar es un **script local** que abre **Google Chrome** con ajustes para reducir el bloqueo de Google, haces el **login a mano** y al terminar se guarda `storageState.json`.
+`codegen` a veces no deja acceder a Google o no muestra el botón bien. En este repo el flujo que suele funcionar es un **script local**: haces **login a mano** y al terminar se guarda `storageState.json`.
+
+**Importante para GitHub Actions:** en CI se usa el **Chromium empaquetado** de Playwright (Linux). Si genera el `storageState` solo con **Google Chrome** en Windows, el secret a veces **no** rehidrata sesión en el runner. Para alinear el motor con CI, genere el archivo con:
+
+```powershell
+# PowerShell (Windows)
+$env:STORAGE_FOR_CI="1"
+npm run storage:save
+```
+
+(Requiere `npx playwright install chromium` al menos una vez en esa máquina.)
 
 ### 1) Generar `storageState.json`
 
@@ -95,7 +105,8 @@ npm run storage:save
 
 (Equivale a `node scripts/saveStorageManual.js`.)
 
-- Se abre Chrome.
+- Por defecto se abre **Chrome** instalado.
+- Con `STORAGE_FOR_CI=1` se abre el **Chromium** de Playwright (recomendado para el secret que consumen las Actions).
 - Navega a `https://www.refactorii.com/p2l-tenant/dashboard` (o la URL de `P2L_DASHBOARD_URL` si la defines).
 - Inicia sesión con Google de forma **manual** hasta ver el panel.
 - Vuelve a la consola y **pulsa Enter** para guardar.

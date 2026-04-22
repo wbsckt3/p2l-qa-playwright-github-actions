@@ -216,20 +216,41 @@ class DashboardPage {
     const dashboardReady = createCompany
       .or(empresaHeader)
       .or(planes);
+    const tryVisible = async (timeout) => {
+      await expect(dashboardReady).toBeVisible({ timeout });
+    };
+
     try {
-      await expect(dashboardReady).toBeVisible({ timeout: 75_000 });
+      await tryVisible(75_000);
     } catch (e) {
+      if (process.env.CI === 'true' || process.env.PLAYWRIGHT_SKIP_GOOGLE_UI === '1') {
+        await this.page.reload({ waitUntil: 'domcontentloaded' });
+        await this.page.waitForLoadState('networkidle', { timeout: 35_000 }).catch(() => {});
+        const loading2 = this.page.getByText('Cargando…');
+        await loading2.waitFor({ state: 'hidden', timeout: 45_000 }).catch(() => {});
+        try {
+          await tryVisible(45_000);
+          return;
+        } catch (e2) {
+          e = e2;
+        }
+      }
+      const url = this.page.url();
       const onLogin =
         (await loginHeading.isVisible().catch(() => false)) &&
         (await googleBtnContainer.isVisible().catch(() => false));
       if (process.env.CI === 'true' && process.env.PLAYWRIGHT_SKIP_GOOGLE_UI === '1' && onLogin) {
         throw new Error(
-          'CI restauró storageState pero la app sigue en login. El estado guardado expiró o no corresponde al tenant. ' +
-            'Regenera storageState.json en local, conviértelo a base64 y actualiza el secret PLAYWRIGHT_STORAGE_B64.'
+          'CI restauró storageState pero la app sigue en login. URL actual: ' +
+            url +
+            ' El estado pudo expirar, no corresponde al tenant, o se generó con Chrome y CI usa Chromium. ' +
+            'Regenere con: $env:STORAGE_FOR_CI="1"; npm run storage:save (mismo motor que en Actions), luego base64 y secret PLAYWRIGHT_STORAGE_B64.'
         );
       }
       if (onLogin) {
-        throw new Error('La sesión no está en dashboard (sigue en login). Pruebe regenerar storage o login manual con test:headed.');
+        throw new Error(
+          'La sesión no está en dashboard (sigue en login). URL: ' + url + ' Pruebe regenerar storage o test:headed.'
+        );
       }
       throw e;
     }
