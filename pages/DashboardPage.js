@@ -317,26 +317,40 @@ class DashboardPage {
   }
 
   /**
+   * Abre el acordeón "Datos de empresa" si hace falta (el h2 del nombre queda hidden si <details> está cerrado).
+   * En CompanyDashboardView el bloque usa la clase `company-accordion__item--company`.
+   */
+  async _ensureCompanyDetailsOpen() {
+    const details = this.page.locator('details.company-accordion__item--company').first();
+    await expect(details).toBeVisible({ timeout: 45_000 });
+
+    if ((await details.getAttribute('open')) == null) {
+      await details.locator('summary').first().click();
+    }
+
+    const nameH2 = details.locator('section.company-dash__card--inside-accordion h2').first();
+    // El título h2 queda "hidden" en DOM si <details> sigue colapsado; al abrir, debe mostrarse.
+    await expect(nameH2).toBeVisible({ timeout: 25_000 });
+  }
+
+  /**
    * Obtiene el nombre comercial mostrado (acordeón "Datos de empresa" o variable interna).
    */
   async getCompanyName() {
+    await this._ensureCompanyDetailsOpen();
+
+    // El nombre vive en el h2 del acordeón "Datos de empresa" (no en el h2 del formulario "Crear empresa").
+    const details = this.page.locator('details.company-accordion__item--company');
+    const h2 = details.locator('.company-dash__card--inside-accordion h2, h2').first();
+
     if (this._lastCompanyName) {
-      await expect(this.page.getByText(this._lastCompanyName, { exact: false }).first()).toBeVisible({
-        timeout: 30_000,
-      });
+      await expect(h2).toBeVisible({ timeout: 30_000 });
+      await expect(h2).toContainText(this._lastCompanyName, { timeout: 10_000 });
       return this._lastCompanyName;
     }
 
-    const summary = this.page.getByRole('button', { name: /Datos de empresa/i });
-    if (await summary.isVisible().catch(() => false)) {
-      await safeClick(summary);
-      const h2 = this.page.locator('.company-dash__card--inside-accordion h2').first();
-      await waitVisible(h2);
-      return (await h2.innerText()).trim();
-    }
-
-    const hero = this.page.getByRole('heading', { level: 2 }).first();
-    return (await hero.innerText()).trim();
+    await waitVisible(h2, { timeout: 30_000 });
+    return (await h2.innerText()).trim();
   }
 
   /**
