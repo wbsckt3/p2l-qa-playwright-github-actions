@@ -202,6 +202,8 @@ class DashboardPage {
   async waitDashboardLoaded() {
     const loading = this.page.getByText('Cargando…');
     await loading.waitFor({ state: 'hidden', timeout: 60_000 }).catch(() => {});
+    await this.page.waitForLoadState('domcontentloaded');
+    await this.page.waitForLoadState('networkidle', { timeout: 45_000 }).catch(() => {});
 
     const createCompany = this.page.getByRole('heading', { name: 'Crear empresa' });
     const empresaHeader = this.page.getByRole('heading', { name: /Empresa · P2L/i });
@@ -209,36 +211,27 @@ class DashboardPage {
     const loginHeading = this.page.getByRole('heading', { name: /Inicia sesión con Google/i });
     const googleBtnContainer = this.page.locator('#google-signin-button');
 
-    const state = await expect
-      .poll(
-        async () => {
-          if (await loginHeading.isVisible().catch(() => false)) return 'login';
-          if (await googleBtnContainer.isVisible().catch(() => false)) return 'login';
-          if (await createCompany.isVisible().catch(() => false)) return 'create';
-          if (await empresaHeader.isVisible().catch(() => false)) return 'dash';
-          if (await planes.isVisible().catch(() => false)) return 'dash';
-          return 'unknown';
-        },
-        { timeout: 60_000, intervals: [500, 1000, 2000] }
-      )
-      .not.toBe('unknown')
-      .then(() =>
-        // Re-evaluar estado final para decidir mensaje más útil.
-        (async () => {
-          if (await loginHeading.isVisible().catch(() => false)) return 'login';
-          if (await googleBtnContainer.isVisible().catch(() => false)) return 'login';
-          if (await createCompany.isVisible().catch(() => false)) return 'create';
-          if (await empresaHeader.isVisible().catch(() => false)) return 'dash';
-          if (await planes.isVisible().catch(() => false)) return 'dash';
-          return 'unknown';
-        })()
-      );
-
-    if (state === 'login' && process.env.CI === 'true' && process.env.PLAYWRIGHT_SKIP_GOOGLE_UI === '1') {
-      throw new Error(
-        'CI restauró storageState pero la app sigue en login. El estado guardado expiró o no corresponde al tenant. ' +
-          'Regenera storageState.json en local, conviértelo a base64 y actualiza el secret PLAYWRIGHT_STORAGE_B64.'
-      );
+    // Importante: NO usar "login" como criterio de fin del poll. Antes, el primer frame con login
+    // (redirect SPA aún resolviendo) hacía .not.toBe('unknown') y cortaba el wait antes de tiempo.
+    const dashboardReady = createCompany
+      .or(empresaHeader)
+      .or(planes);
+    try {
+      await expect(dashboardReady).toBeVisible({ timeout: 75_000 });
+    } catch (e) {
+      const onLogin =
+        (await loginHeading.isVisible().catch(() => false)) &&
+        (await googleBtnContainer.isVisible().catch(() => false));
+      if (process.env.CI === 'true' && process.env.PLAYWRIGHT_SKIP_GOOGLE_UI === '1' && onLogin) {
+        throw new Error(
+          'CI restauró storageState pero la app sigue en login. El estado guardado expiró o no corresponde al tenant. ' +
+            'Regenera storageState.json en local, conviértelo a base64 y actualiza el secret PLAYWRIGHT_STORAGE_B64.'
+        );
+      }
+      if (onLogin) {
+        throw new Error('La sesión no está en dashboard (sigue en login). Pruebe regenerar storage o login manual con test:headed.');
+      }
+      throw e;
     }
   }
 
