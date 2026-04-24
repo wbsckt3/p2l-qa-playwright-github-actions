@@ -38,6 +38,25 @@ ADMIN_EMAIL=...
 ADMIN_PASSWORD=...
 ```
 
+### Clon nuevo o compañero sin tu `storageState`
+
+El repo **no** incluye sesión de Google: en GitHub Actions el job mete la suya vía el secreto `PLAYWRIGHT_STORAGE_B64`; en **local** cada máquina debe tener su propio JSON o probar login asistido.
+
+Si al correr `npm test` aparece **«Sesión en login, no en panel»** (sigue en la URL con `?redirect=/dashboard` y el aviso de Google), lo más estable es **no** depender del login automatizado en ese entorno:
+
+1. `npm run storage:save` (script `scripts/saveStorageManual.js`).
+2. En el navegador que abre, inicie sesión **a mano** con Google hasta ver el dashboard.
+3. En la consola, Enter para guardar (p. ej. `storageState.json` en la raíz del repo).
+4. En `.env` añada la ruta al JSON y omita la UI de Google en los tests:
+
+```env
+PLAYWRIGHT_STORAGE_STATE=storageState.json
+PLAYWRIGHT_SKIP_GOOGLE_UI=1
+```
+
+5. Vuelva a ejecutar `npm test` o `npm run test:headed`.  
+**No hace falta** el mismo base64 del CI en local; esas credenciales/JSON son por usuario y se mantienen fuera de git (ver `.gitignore`).
+
 ## Modo solo dashboard (sin ejercitar el login de Google)
 
 **Solo aplica en este repo de Playwright (QA), no hace falta cambiar el proyecto P2L.**
