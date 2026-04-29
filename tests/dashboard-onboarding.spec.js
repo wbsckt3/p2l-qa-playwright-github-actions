@@ -73,9 +73,12 @@ function dashboardOnly() {
   return process.env.PLAYWRIGHT_DASHBOARD_ONLY === '1';
 }
 
-/** CI con B64/PLAYWRIGHT_STORAGE_STATE: sin loginWithGoogle, sesión inyectada. */
-function sessionFromCISecret() {
-  return process.env.CI === 'true' && process.env.PLAYWRIGHT_SKIP_GOOGLE_UI === '1';
+/**
+ * Local o CI: sesión cargada desde PLAYWRIGHT_STORAGE_STATE (+ .env PLAYWRIGHT_SKIP_GOOGLE_UI=1)
+ * sin abrir loginWithGoogle — debe coincidir con cómo cargó playwright.config el storageState.
+ */
+function sessionUsesStorageBypass() {
+  return process.env.PLAYWRIGHT_SKIP_GOOGLE_UI === '1';
 }
 
 test.describe('P2L — CompanyDashboardView (onboarding y reglas de negocio)', () => {
@@ -88,8 +91,7 @@ test.describe('P2L — CompanyDashboardView (onboarding y reglas de negocio)', (
 
   test('RB-001…007: sesión, alta opcional, cabecera, planes, datos, conductores', async ({ page }) => {
     const onlyDash = dashboardOnly();
-    const fromSecret = sessionFromCISecret();
-    const useStoragePath = onlyDash || fromSecret;
+    const useStoragePath = onlyDash || sessionUsesStorageBypass();
     const email = process.env.ADMIN_EMAIL;
     const password = process.env.ADMIN_PASSWORD;
 
@@ -97,7 +99,7 @@ test.describe('P2L — CompanyDashboardView (onboarding y reglas de negocio)', (
     if (!useStoragePath) {
       expect(
         password,
-        'ADMIN_PASSWORD para login Google, o CI con B64 + PLAYWRIGHT_SKIP_GOOGLE_UI=1.'
+        'ADMIN_PASSWORD para login Google, o storage local/CI: PLAYWRIGHT_STORAGE_STATE + PLAYWRIGHT_SKIP_GOOGLE_UI=1 (ver README).'
       ).toBeTruthy();
     }
 
