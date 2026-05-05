@@ -13,6 +13,12 @@ Repositorio **independiente** para QA automatizado del panel empresa P2L en **pr
 - Login con Google desde UI real.
 - Onboarding de empresa (si aplica en primer ingreso).
 - Validación flexible de plan inicial (FREE / STARTER / TRIAL / $0 COP).
+- QA Lab (Simulation Lab · `UberLikeSimulacionView.vue` → `UberLikeView.vue` QA) **sin login Google** — rutas configurables (`P2L_SIMULATION_ROUTES`; por defecto **`/p2l-tenant/simulacion-lab`** y fallback **`simulation-lab`** con `role=driver&qa=true`). Contrato **`data-testid` / `window.qaRide`:** **`tests/QA_LAB_SPEC.md`**.
+  - Transiciones `requested -> accepted -> arrived -> in_progress -> completed`.
+  - Escenario `cancelled`.
+  - Movimiento: preferencia **`window.qaRide.getCoords`** (menos flaky que sólo marcadores Leaflet).
+  - Botones QA + **`window.qaRide`** (`runFullFlow`, `reset`, `getIncomingRideRequestCount`, etc.).
+  - **Pasajero real + conductor automatizado:** la solicitud la hace solo el pasajero en el móvil (app normal); Playwright automatiza los clics **en la interfaz conductor** del lab (`uber-like-lab-await-passenger.spec.js`, `P2L_LAB_AWAIT_REAL_PASSENGER=1`), con **`geolocation`** y **`notifications`** como en escritorio prod. Detalle del contrato en **`tests/QA_LAB_SPEC.md`** («Pasajero manual + conductor automatizado»).
 
 ## Requisitos
 
@@ -97,6 +103,12 @@ npm run report
 Este repo en local intenta usar **Google Chrome instalado** (`channel: 'chrome'`).  
 Si aun así bloquea el login, use una cuenta QA menos restringida o genere sesión guardada (sección siguiente).
 
+### Chrome gestionado por directivas corporativas (mensajes sobre flags de línea de comandos)
+
+Si aparece un aviso tipo *“No se admite el indicador … `--disable-blink-features=AutomationControlled`”* (u otros `--disable-*`), la política de **Chrome administrado por la empresa** suele rechazarlos. Este proyecto **ya no incluye ese flag por defecto** desde la configuración local; sólo se añade si pusiste **`PLAYWRIGHT_USE_AUTOMATION_STEALTH=1`** en `.env` (útil fuera del entorno corporativo si Google sigue marcando el navegador como “no seguro”).
+
+Si en la pantalla *Inicia sesión con Google* **no llega el botón** GIS (hueco vacío bajo el título), suele bloquearse el iframe `accounts.google` (firewall/adblock/extensiones/directivas). En ese equipo lo práctico es **login solo en navegador no gestionado** y guardar **`storageState`** con `npm run storage:save`, más **`PLAYWRIGHT_SKIP_GOOGLE_UI=1`**.
+
 ## Habilitar ejecución en GitHub Actions
 
 El workflow vive en `.github/workflows/playwright.yml` y corre en:
@@ -148,6 +160,7 @@ npm run storage:save
 (Equivale a `node scripts/saveStorageManual.js`.)
 
 - Por defecto se abre **Google Chrome** (`channel: 'chrome'`).
+- Cada corrida usa un perfil nuevo en `./playwright/.save-session-<instante>/` para que no aparezca *“Sesión de navegador existente”* si un Chrome anterior dejó `.tmp-profile` ocupado; con **`STORAGE_REUSE_PROFILE=1`** se fuerza `./.tmp-profile` (cerrá todas las ventanas de Chrome antes).
 - Con `STORAGE_FOR_CI=1` se usa un perfil distinto (`.tmp-profile-ci`) pero el mismo canal Chrome que en Actions.
 - Con `PLAYWRIGHT_USE_CHROMIUM=1` se abre **Chromium** empaquetado (sin Chrome instalado; puede diferir del motor de CI).
 - Navega a `https://www.refactorii.com/p2l-tenant/dashboard` (o la URL de `P2L_DASHBOARD_URL` si la defines).

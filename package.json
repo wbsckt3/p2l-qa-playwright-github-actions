@@ -7,6 +7,9 @@
     "test": "playwright test",
     "test:headed": "playwright test --headed",
     "test:ui": "playwright test --ui",
+    "test:sim-lab": "playwright test tests/uber-like-simulation-qa.spec.js --headed --project=chrome --workers=1 --reporter=list",
+    "test:qa:m1": "playwright test tests/qa-lab/momentum-1.accepted.spec.js --project=chrome --workers=1 --reporter=list,html",
+    "test:qa:stage": "playwright test tests/qa-lab/momentum-1.accepted.spec.js --project=chrome --workers=1 --reporter=list,html",
     "report": "playwright show-report",
     "storage:save": "node scripts/saveStorageManual.js"
   },

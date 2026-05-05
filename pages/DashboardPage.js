@@ -109,11 +109,80 @@ class DashboardPage {
   }
 
   async _isGoogleLoginUIRendered() {
-    const loginHeading = this.page.getByRole('heading', { name: /Inicia sesión con Google/i });
-    const googleBtn = this.page.locator('#google-signin-button');
-    return (
-      (await loginHeading.isVisible().catch(() => false)) && (await googleBtn.isVisible().catch(() => false))
-    );
+    return await this.page
+      .getByRole('heading', { name: /Inicia sesión con Google/i })
+      .isVisible()
+      .catch(() => false);
+  }
+
+  /**
+   * Google Identity Services suele estar en `#google-signin-button iframe`; en redes/directivas puede
+   * montarse igual en `.g_id_signin`, otro iframe `accounts.google` o un enlace OAuth.
+   * @returns {Promise<import('@playwright/test').Locator | null>}
+   */
+  async _resolveGoogleOAuthClickLocator() {
+    const short = Math.min(T.SHORT, 10_000);
+
+    /**
+     * @param {string} iframeSel
+     * @returns {Promise<import('@playwright/test').Locator | null>}
+     */
+    const tryFrame = async (iframeSel) => {
+      const wrapped = this.page.locator(iframeSel).first();
+      if ((await wrapped.count()) === 0) return null;
+      const fl = this.page.frameLocator(iframeSel).first();
+      const loc = fl
+        .getByRole('button')
+        .or(fl.locator('div[role="button"], button, span[role="button"]'))
+        .first();
+      if (await loc.isVisible({ timeout: short }).catch(() => false)) {
+        return loc;
+      }
+      return null;
+    };
+
+    /** @type {string[]} */
+    const iframeSelectors = [
+      '#google-signin-button iframe',
+      '.g_id_signin iframe',
+      '[data-testid="google-signin-button"] iframe',
+      '#google-signin-button >> iframe',
+      'iframe[src*="accounts.google"][src*="gsi"]',
+      'iframe[src*="accounts.google.com/gsi/"]',
+    ];
+    for (const sel of iframeSelectors) {
+      const hit = await tryFrame(sel);
+      if (hit) return hit;
+    }
+
+    const outside = this.page
+      .locator(
+        '#google-signin-button button, #google-signin-button [role="button"], ' +
+          '.g_id_signin button, .g_id_signin [role="button"]'
+      )
+      .first();
+    if (await outside.isVisible({ timeout: short }).catch(() => false)) return outside;
+
+    const oauthHref = this.page
+      .locator(
+        'a[href*="accounts.google.com/o/oauth"], ' +
+          'a[href*="accounts.google.com/signin/oauth"], ' +
+          'a[href*="google.com/oauth"]'
+      )
+      .first();
+    if (await oauthHref.isVisible({ timeout: short }).catch(() => false)) return oauthHref;
+
+    const roleFallback = this.page
+      .getByRole('button', {
+        name: /Continuar con Google|Sign in with Google|Inicia sesión con Google|Google\s*$/i,
+      })
+      .first();
+    if (await roleFallback.isVisible({ timeout: short }).catch(() => false)) return roleFallback;
+
+    const linkGoogle = this.page.getByRole('link', { name: /Google/i }).first();
+    if (await linkGoogle.isVisible({ timeout: short }).catch(() => false)) return linkGoogle;
+
+    return null;
   }
 
   /**
@@ -266,8 +335,36 @@ class DashboardPage {
       return;
     }
 
-    const iframeSel = '#google-signin-button iframe';
-    await this.page.locator(iframeSel).first().waitFor({ state: 'attached', timeout: T.LONG });
+    /** Da tiempo al script GIS / iframes (red lenta o bloque parcial suele renderizar después). */
+    await this.page.waitForLoadState('networkidle', { timeout: T.MEDIUM }).catch(() => {});
+    await this.page
+      .waitForFunction(
+        () =>
+          !!(
+            document.querySelector('#google-signin-button iframe') ||
+            document.querySelector('.g_id_signin iframe') ||
+            document.querySelector('iframe[src*="accounts.google"][src*="gsi"]') ||
+            document.querySelector('#google-signin-button button, #google-signin-button [role="button"]') ||
+            document.querySelector('a[href*="accounts.google.com/o/oauth"]')
+          ),
+        null,
+        { timeout: T.XL }
+      )
+      .catch(() => {});
+
+    let innerBtn = await this._resolveGoogleOAuthClickLocator();
+    if (!innerBtn) {
+      await new Promise((r) => setTimeout(r, 1_600));
+      innerBtn = await this._resolveGoogleOAuthClickLocator();
+    }
+
+    if (!innerBtn) {
+      throw new Error(
+        'Login P2L sin control clicable de Google Sign-In (GIS suele estar bloqueado por red/directivas/adblock o el DOM cambió). ' +
+          'Alternativas: inicie sesión en su Chrome habitual y use `npm run storage:save` + PLAYWRIGHT_STORAGE_STATE y ' +
+          'PLAYWRIGHT_SKIP_GOOGLE_UI=1 en .env (ver README).'
+      );
+    }
 
     const ctx = this.page.context();
     const popupWait = this.page.waitForEvent('popup', { timeout: T.LONG + 10_000 }).catch(() => null);
@@ -284,13 +381,22 @@ class DashboardPage {
       })
       .catch(() => null);
 
-    const frame = this.page.frameLocator(iframeSel).first();
-    const innerBtn = frame.getByRole('button').or(frame.locator('div[role="button"]')).first();
     await safeClick(innerBtn, { timeout: T.LONG });
 
     let authPage = await this._waitForFirstGoogleAuthPage([popupWait, newPageWait], T.LONG + 11_000);
     if (!authPage) {
       authPage = await this._pollForGoogleAuthPage(this.page, ctx);
+    }
+    /** Enlace OAuth en la misma pestaña en lugar de popup. */
+    if (!authPage) {
+      try {
+        await this.page.waitForURL(/accounts\.google\.com|google\.com\/o\/oauth2/i, { timeout: 15_000 });
+        if (!this.page.isClosed() && googleHostRe(this.page.url())) {
+          authPage = this.page;
+        }
+      } catch {
+        /* sigue abajo */
+      }
     }
     if (!authPage) {
       throw new Error(
