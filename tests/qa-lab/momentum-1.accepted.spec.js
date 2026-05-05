@@ -24,7 +24,12 @@ test.describe('QA Lab · Momentum 1 (request_sent/request_viewed -> accepted)', 
     await runUntil(page, STAGES.M1_ACCEPTED);
 
     await expect(page.getByTestId('btn-accept')).toBeDisabled();
-    await expect(page.getByTestId('btn-arrived')).toBeEnabled();
+    /**
+     * Tras accepted, el flujo QA ordena primero «Ir al origen (sim)»;
+     * «Registrar llegada al origen» sigue bloqueado hasta latch/modal (M2, no M1).
+     */
+    await expect(page.getByTestId('btn-q-pickup-leg')).toBeEnabled();
+    await expect(page.getByTestId('btn-arrived')).toBeDisabled();
     await expect(page.getByTestId('trip-counter')).toBeVisible();
     await expect(page.getByTestId('wallet-balance')).toBeVisible();
 
