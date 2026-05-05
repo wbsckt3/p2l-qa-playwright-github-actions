@@ -1,27 +1,52 @@
 const { expect } = require('@playwright/test');
 const { SIMULATION_ROUTES } = require('../../../utils/testData');
 
+/** Mismo criterio que `uber-like-lab-await-passenger.spec.js`: SPA puede tardar tras `load`. */
+const QA_PANEL_WAIT_MS = Number.parseInt(process.env.P2L_QA_PANEL_WAIT_MS || '45000', 10) || 45000;
+
+function resolveLabPath(path) {
+  const base = (process.env.PLAYWRIGHT_FORCE_BASE_URL || '').trim().replace(/\/$/, '');
+  if (!base) return path.startsWith('/') ? path : `/${path}`;
+  const p = path.startsWith('/') ? path : `/${path}`;
+  return `${base}${p}`;
+}
+
 async function dismissOptionalPushModal(page) {
   const dismiss = page.getByTestId('btn-push-dismiss');
   if (await dismiss.isVisible().catch(() => false)) await dismiss.click();
 }
 
 async function openQaLab(page) {
-  const wait = { waitUntil: 'load' };
+  const nav = { waitUntil: 'domcontentloaded', timeout: 60_000 };
+  let lastErr = null;
 
   for (const route of SIMULATION_ROUTES) {
     const path = route.startsWith('/') ? route : `/${route}`;
-    await page.goto(path, wait);
-    await dismissOptionalPushModal(page);
-    const panel = page.getByTestId('qa-panel');
-    if (await panel.isVisible().catch(() => false)) {
+    const target = resolveLabPath(path);
+    try {
+      await page.goto(target, nav);
+      await dismissOptionalPushModal(page);
+      await page.waitForSelector('[data-testid="qa-panel"]', { state: 'visible', timeout: QA_PANEL_WAIT_MS });
       await expect
-        .poll(async () => page.evaluate(() => typeof window.qaRide?.getState === 'function'), { timeout: 20_000 })
+        .poll(async () => page.evaluate(() => typeof window.qaRide?.getState === 'function'), { timeout: 25_000 })
         .toBe(true);
       return path;
+    } catch (e) {
+      lastErr = e;
     }
   }
-  throw new Error(`No se pudo abrir qa-panel en rutas: ${SIMULATION_ROUTES.join(', ')}`);
+
+  let diag = '';
+  try {
+    diag = ` url=${await page.url()} title=${await page.title()}`;
+  } catch (_) {
+    diag = '';
+  }
+  throw new Error(
+    `No se pudo abrir qa-panel en rutas: ${SIMULATION_ROUTES.join(', ')}.${diag}` +
+      (lastErr ? ` Último error: ${lastErr.message}` : '') +
+      ' Revisa red, que ?qa=true esté en la URL y sube P2L_QA_PANEL_WAIT_MS si la SPA va lenta.'
+  );
 }
 
 async function ensurePanelExpanded(page) {
