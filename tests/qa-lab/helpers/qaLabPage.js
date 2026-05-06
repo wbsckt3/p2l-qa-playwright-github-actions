@@ -123,6 +123,36 @@ async function expectEventLogContains(page, textOrRegex) {
   }
 }
 
+/**
+ * Tras `accepted`: animación conductor→pickup + modal «Llegaste al origen».
+ * Sin esto, `btn-arrived` sigue bloqueado (latch QA / producto).
+ * Misma estrategia que `tests/uber-like-simulation-qa.spec.js`.
+ */
+async function completePickupLegAndDismissArrivalModal(page) {
+  await ensurePanelExpanded(page);
+  await page.waitForTimeout(800);
+  await page.evaluate(() => {
+    if (typeof window.qaRide?.startPickupLeg === 'function') window.qaRide.startPickupLeg();
+  });
+
+  const hasSimProbe = await page.evaluate(() => typeof window.qaRide?.isMapSimulationRunning === 'function');
+  if (hasSimProbe) {
+    await expect
+      .poll(async () => page.evaluate(() => window.qaRide.isMapSimulationRunning()), { timeout: 25_000 })
+      .toBeTruthy();
+    await expect
+      .poll(async () => !(await page.evaluate(() => window.qaRide.isMapSimulationRunning())), {
+        timeout: 120_000,
+      })
+      .toBeTruthy();
+  }
+
+  await expect(page.locator('#driver-pickup-title')).toContainText(/llegaste al origen/i, {
+    timeout: 120_000,
+  });
+  await page.getByRole('button', { name: /^\s*(más tarde|mas tarde)\s*$/i }).click();
+}
+
 module.exports = {
   openQaLab,
   ensurePanelExpanded,
@@ -133,4 +163,5 @@ module.exports = {
   waitForIncomingRequest,
   expectRideStatus,
   expectEventLogContains,
+  completePickupLegAndDismissArrivalModal,
 };

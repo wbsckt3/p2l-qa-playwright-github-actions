@@ -8,8 +8,11 @@
     "test:headed": "playwright test --headed",
     "test:ui": "playwright test --ui",
     "test:sim-lab": "playwright test tests/uber-like-simulation-qa.spec.js --headed --project=chrome --workers=1 --reporter=list",
-    "test:qa:m1": "playwright test tests/qa-lab/momentum-1.accepted.spec.js --project=chrome --workers=1 --reporter=list,html",
-    "test:qa:stage": "playwright test tests/qa-lab/momentum-1.accepted.spec.js --project=chrome --workers=1 --reporter=list,html",
+    "test:qa:m1": "playwright test tests/qa-lab/momentums/m1-to-accepted.spec.js --project=chrome --workers=1 --reporter=list,html",
+    "test:qa:m2": "playwright test tests/qa-lab/momentums/m2-to-arrived.spec.js --project=chrome --workers=1 --reporter=list,html",
+    "test:qa:m3": "playwright test tests/qa-lab/momentums/m3-to-in-progress.spec.js --project=chrome --workers=1 --reporter=list,html",
+    "test:qa:m4": "playwright test tests/qa-lab/momentums/m4-to-completed.spec.js --project=chrome --workers=1 --reporter=list,html",
+    "test:qa:momentums": "playwright test tests/qa-lab/momentums --project=chrome --workers=1 --reporter=list,html",
     "report": "playwright show-report",
     "storage:save": "node scripts/saveStorageManual.js"
   },

@@ -6,6 +6,7 @@ const {
   waitForIncomingRequest,
   expectRideStatus,
   expectEventLogContains,
+  completePickupLegAndDismissArrivalModal,
 } = require('./qaLabPage');
 
 const STAGES = Object.freeze({
@@ -55,6 +56,8 @@ async function runUntil(page, stage) {
   if (stage === STAGES.M1_ACCEPTED) {
     return;
   }
+
+  await completePickupLegAndDismissArrivalModal(page);
 
   await clickFlowButton(page, 'btn-arrived');
   await expectRideStatus(page, /arrived/i, 60_000);
