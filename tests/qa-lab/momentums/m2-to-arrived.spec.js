@@ -6,6 +6,8 @@ const { STAGES, runUntil } = require('../helpers/stageRunner');
 const ALLOW_SYNTHETIC = process.env.P2L_ALLOW_SYNTHETIC === '1';
 
 /**
+ * Documento producto: `momentum 2 - accepted a llegada pickup (arrived).txt` (repo uber-like).
+ *
  * Momentum 2 (post-accept → llegada al origen):
  * premisa: viaje accepted.
  * transición: tramo al pickup (sim) + modal → registrar arrived.

@@ -6,6 +6,8 @@ const { STAGES, runUntil } = require('../helpers/stageRunner');
 const ALLOW_SYNTHETIC = process.env.P2L_ALLOW_SYNTHETIC === '1';
 
 /**
+ * Documento producto: `momentum 4 - in_progress a completed.txt` (repo uber-like).
+ *
  * Momentum 4: cierre del viaje.
  * premisa: trayecto in_progress.
  * transición: Completar viaje → completed.

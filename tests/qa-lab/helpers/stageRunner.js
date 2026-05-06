@@ -1,3 +1,11 @@
+/**
+ * Transiciones ordenadas vs documentos «momentum» en el repo **producto** (raíz uber-like),
+ * mismo tenant / QA lab conductor:
+ *   momentum 1 – … accepted.txt          → hasta `M1_ACCEPTED`
+ *   momentum 2 – … arrived.txt           → + pickup sim + modal + `M2_ARRIVED`
+ *   momentum 3 – … pickup a destino.txt  → + `M3_IN_PROGRESS`
+ *   momentum 4 – … completed.txt        → `M4_COMPLETED`
+ */
 const {
   resetFlow,
   clickFlowButton,

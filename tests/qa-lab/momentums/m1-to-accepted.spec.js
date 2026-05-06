@@ -6,6 +6,8 @@ const { STAGES, runUntil } = require('../helpers/stageRunner');
 const ALLOW_SYNTHETIC = process.env.P2L_ALLOW_SYNTHETIC === '1';
 
 /**
+ * Documento producto: `momentum 1 - transiciones de estado a accepted.txt` (repo uber-like).
+ *
  * Momentum 1 (documento «solicitud → match»):
  * premisa: solicitud real en cola (ride_request).
  * transición: aceptar conductor → estado accepted (asignación).
