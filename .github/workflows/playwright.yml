@@ -2,6 +2,12 @@ name: Playwright QA
 
 on:
   workflow_dispatch:
+<<<<<<< HEAD
+=======
+  #push:
+    #branches: [ main ]
+  #pull_request:
+>>>>>>> 51923d805c160a8b2d2ef75ac81401feb3bd8bf0
 
 jobs:
   test:
